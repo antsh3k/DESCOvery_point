@@ -76,3 +76,17 @@ class CompanyRead(BaseModel):
     sources: list[CompanySourceRead]
     created_at: datetime
     updated_at: datetime
+
+
+class CompanyListItem(BaseModel):
+    """Lightweight row for the 'recent analyses' list (no sources/summary)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    url: str
+    name: str | None
+    industry: str | None
+    location_country: str | None
+    status: CompanyStatus
+    created_at: datetime

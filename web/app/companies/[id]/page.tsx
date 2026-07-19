@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -20,6 +21,7 @@ export default function CompanyPage() {
   const [funds, setFunds] = useState<Record<string, Fund>>({});
   const [matches, setMatches] = useState<Match[]>([]);
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
+  const [provider, setProvider] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [matching, setMatching] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -39,6 +41,7 @@ export default function CompanyPage() {
         setCompany(c);
         setFunds(Object.fromEntries(fundList.map((f) => [f.id, f])));
         setMatches(existing);
+        setProvider(settings.llm_provider);
         setWeights({
           thesis: settings.weight_thesis,
           numeric: settings.weight_numeric,
@@ -105,7 +108,14 @@ export default function CompanyPage() {
 
   return (
     <div className="space-y-6">
-      <CompanySummary company={company} />
+      <Link
+        href="/"
+        className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-accent"
+      >
+        ← Back to analyze
+      </Link>
+
+      <CompanySummary company={company} analyzedWith={provider} />
 
       <WeightControls
         weights={weights}
