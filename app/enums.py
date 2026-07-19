@@ -10,6 +10,16 @@ class CompanyStatus(StrEnum):
     failed = "failed"
 
 
+class EnrichmentStatus(StrEnum):
+    """Lifecycle of the background firmographics-enrichment job."""
+
+    pending = "pending"  # queued, not yet started
+    running = "running"  # web search in progress
+    done = "done"
+    failed = "failed"
+    skipped = "skipped"  # enrichment disabled (ENRICH_SOURCE=off)
+
+
 class FetchMethod(StrEnum):
     http = "http"
     claude = "claude"

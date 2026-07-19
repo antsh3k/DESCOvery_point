@@ -59,6 +59,22 @@ export default function CompanyPage() {
     };
   }, [id]);
 
+  // Enrichment runs as a background job; poll until it settles, then stop.
+  const enriching =
+    company?.enrichment_status === "pending" ||
+    company?.enrichment_status === "running";
+  useEffect(() => {
+    if (!enriching) return;
+    const timer = setInterval(async () => {
+      try {
+        setCompany(await api.getCompany(id));
+      } catch {
+        /* transient — keep the last good state and retry next tick */
+      }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [enriching, id]);
+
   async function runMatch() {
     setMatching(true);
     setError(null);
@@ -115,7 +131,11 @@ export default function CompanyPage() {
         ← Back to analyze
       </Link>
 
-      <CompanySummary company={company} analyzedWith={provider} />
+      <CompanySummary
+        company={company}
+        analyzedWith={provider}
+        enriching={enriching}
+      />
 
       <WeightControls
         weights={weights}

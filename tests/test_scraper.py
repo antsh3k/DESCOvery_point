@@ -3,6 +3,7 @@
 import httpx
 import respx
 
+import app.services.scraper.tier1_http as tier1_http
 from app.enums import FetchMethod
 from app.services.scraper.tier1_http import fetch_site
 
@@ -24,7 +25,11 @@ _ABOUT = """
 
 
 @respx.mock
-async def test_fetch_site_parses_and_follows_internal_links():
+async def test_fetch_site_parses_and_follows_internal_links(monkeypatch):
+    # DNS resolution (the SSRF guard) is real network I/O; stub it so the
+    # test suite stays network-free. url_safety itself has dedicated tests.
+    monkeypatch.setattr(tier1_http, "assert_public_http_url", lambda url: None)
+
     respx.get("https://acme.com/").mock(
         return_value=httpx.Response(200, html=_HOME)
     )

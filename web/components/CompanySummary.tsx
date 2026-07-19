@@ -52,9 +52,11 @@ function SizeIcon() {
 export function CompanySummary({
   company,
   analyzedWith,
+  enriching,
 }: {
   company: Company;
   analyzedWith?: string | null;
+  enriching?: boolean;
 }) {
   const location =
     [company.location_region, company.location_country]
@@ -86,6 +88,12 @@ export function CompanySummary({
           </a>
         </div>
         <div className="flex items-center gap-2">
+          {enriching && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+              Enriching…
+            </span>
+          )}
           {analyzedWith && (
             <Badge tone="slate">Analyzed with {analyzedWith}</Badge>
           )}
@@ -135,6 +143,21 @@ export function CompanySummary({
               {company.investors.map((inv) => (
                 <Badge key={inv} tone="slate">
                   {inv}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {company.competitors.length > 0 && (
+          <div className="mb-5">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Top competitors
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {company.competitors.map((c) => (
+                <Badge key={c} tone="amber">
+                  {c}
                 </Badge>
               ))}
             </div>

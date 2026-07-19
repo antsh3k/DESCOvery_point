@@ -40,7 +40,9 @@ _SEARCH_SYSTEM = (
     "- current employee headcount\n"
     "- annual revenue (state the figure and currency)\n"
     "- ownership status (founder-owned, PE-owned, VC-backed, public, subsidiary)\n"
-    "- investors, backers, parent company, or acquirers\n\n"
+    "- investors, backers, parent company, or acquirers\n"
+    "- the top competitors (name the closest 5, most direct first; sources like "
+    "Datanyze, Owler, Craft, or industry write-ups list these)\n\n"
     "Report what you find in a few short lines, citing the source URL for each "
     "fact. If the searches don't establish a fact, say so — never guess."
 )
@@ -49,7 +51,8 @@ _COERCE_SYSTEM = (
     "in the notes — never invent values. Revenue must be in USD millions (convert "
     "if the notes give another currency). ownership_status is one short label: "
     "'founder-owned', 'PE-owned', 'VC-backed', 'public', 'subsidiary', or "
-    "'unknown'. Leave any unsupported field null / empty. In `sources`, list only "
+    "'unknown'. `competitors` is at most 5 competitor company names, most direct "
+    "first. Leave any unsupported field null / empty. In `sources`, list only "
     "URLs that appear in the notes. Add a 0-1 `confidence` per populated field."
 )
 

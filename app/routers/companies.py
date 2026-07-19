@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.db import get_session
+from app.enums import EnrichmentStatus
 from app.models import Company
 from app.schemas.company import CompanyCreate, CompanyListItem, CompanyRead
-from app.services.pipeline import ExtractionError, ingest_and_extract
+from app.services.pipeline import (
+    ExtractionError,
+    ingest_and_extract,
+    run_company_enrichment,
+)
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -20,15 +25,21 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 @router.post("", response_model=CompanyRead, status_code=status.HTTP_201_CREATED)
 async def create_company(
     payload: CompanyCreate,
+    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> Company:
     try:
-        return await ingest_and_extract(payload.url, session, settings)
+        company = await ingest_and_extract(payload.url, session, settings)
     except ExtractionError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
         ) from exc
+    # Fire enrichment after the response is sent; the client polls the company
+    # until enrichment_status leaves 'pending'/'running'.
+    if company.enrichment_status == EnrichmentStatus.pending:
+        background.add_task(run_company_enrichment, company.id, settings)
+    return company
 
 
 @router.get("", response_model=list[CompanyListItem])

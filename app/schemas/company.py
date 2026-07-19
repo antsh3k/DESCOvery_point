@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.enums import CompanyStatus, FetchMethod
+from app.enums import CompanyStatus, EnrichmentStatus, FetchMethod
 
 
 class ExtractedSource(BaseModel):
@@ -46,6 +46,13 @@ class CompanyProfile(BaseModel):
         default_factory=list,
         description="Known investors, backers, parent company, or acquirers.",
     )
+    competitors: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Top competitor company names (most direct first). Rarely on the "
+            "company's own website; enriched via search."
+        ),
+    )
     confidence: dict[str, float] = Field(
         default_factory=dict, description="Per-field confidence in [0, 1]."
     )
@@ -60,6 +67,7 @@ class CompanyEnrichment(BaseModel):
     revenue_estimate_usd_m: float | None = None
     ownership_status: str | None = None
     investors: list[str] = Field(default_factory=list)
+    competitors: list[str] = Field(default_factory=list)
     confidence: dict[str, float] = Field(default_factory=dict)
     sources: list[ExtractedSource] = Field(default_factory=list)
 
@@ -96,8 +104,10 @@ class CompanyRead(BaseModel):
     business_model: str | None
     ownership_status: str | None
     investors: list
+    competitors: list
     extraction_confidence: dict | None
     status: CompanyStatus
+    enrichment_status: EnrichmentStatus
     sources: list[CompanySourceRead]
     created_at: datetime
     updated_at: datetime

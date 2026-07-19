@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import logging
 
+from starlette.concurrency import run_in_threadpool
+
 from app.config import get_settings
 from app.services.scraper import tier2_claude
 from app.services.scraper.base import ScrapedPage, ScrapeResult
 from app.services.scraper.detector import needs_tier2
 from app.services.scraper.tier1_http import fetch_site
+from app.services.scraper.url_safety import UnsafeURLError, assert_public_http_url, normalize_url
 
 __all__ = ["ScrapeResult", "ScrapedPage", "scrape_company"]
 
@@ -24,6 +27,13 @@ logger = logging.getLogger(__name__)
 async def scrape_company(url: str, *, max_pages: int | None = None) -> ScrapeResult:
     settings = get_settings()
     max_pages = max_pages or settings.scrape_max_pages
+
+    url = normalize_url(url)
+    try:
+        await run_in_threadpool(assert_public_http_url, url)
+    except UnsafeURLError as exc:
+        logger.warning("Refusing to scrape %s: %s", url, exc)
+        return ScrapeResult(pages=[])
 
     pages = await fetch_site(url, max_pages=max_pages)
     result = ScrapeResult(pages=pages)

@@ -15,6 +15,7 @@ def test_enrichment_fills_only_empty_fields():
         revenue_estimate_usd_m=30.0,
         ownership_status="PE-owned",
         investors=["General Atlantic"],
+        competitors=["Lululemon", "Alo Yoga", "Nike"],
         confidence={"size_employees": 0.7},
     )
 
@@ -24,7 +25,28 @@ def test_enrichment_fills_only_empty_fields():
     assert merged.revenue_estimate_usd_m == 30.0
     assert merged.ownership_status == "PE-owned"
     assert merged.investors == ["General Atlantic"]
+    assert merged.competitors == ["Lululemon", "Alo Yoga", "Nike"]
     assert merged.confidence["enriched.size_employees"] == 0.7
+
+
+def test_competitors_capped_at_five():
+    profile = _profile()
+    enrichment = CompanyEnrichment(
+        competitors=["A", "B", "C", "D", "E", "F", "G"],
+    )
+
+    merged = merge_enrichment(profile, enrichment)
+
+    assert merged.competitors == ["A", "B", "C", "D", "E"]
+
+
+def test_website_competitors_win_over_enrichment():
+    profile = _profile(competitors=["Existing Rival"])
+    enrichment = CompanyEnrichment(competitors=["Other Rival"])
+
+    merged = merge_enrichment(profile, enrichment)
+
+    assert merged.competitors == ["Existing Rival"]
 
 
 def test_website_values_win_over_enrichment():

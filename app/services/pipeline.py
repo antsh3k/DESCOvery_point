@@ -17,7 +17,8 @@ from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
 
 from app.config import Settings
-from app.enums import CompanyStatus, FetchMethod
+from app.db import SessionLocal
+from app.enums import CompanyStatus, EnrichmentStatus, FetchMethod
 from app.models import AppSettings, Company, CompanySource, Fund, Match
 from app.schemas.company import CompanyEnrichment, CompanyProfile, ExtractedSource
 from app.services.enrichment import enrich_company
@@ -30,6 +31,7 @@ from app.services.scraper import scrape_company
 logger = logging.getLogger(__name__)
 
 _SNIPPET_CHARS = 300
+_MAX_COMPETITORS = 5
 
 
 class ExtractionError(RuntimeError):
@@ -58,15 +60,16 @@ async def ingest_and_extract(
         await session.commit()
         raise ExtractionError(str(exc)) from exc
 
-    enrichment = await _maybe_enrich(profile, url, settings)
-    if enrichment is not None:
-        profile = merge_enrichment(profile, enrichment)
-
     _apply_profile(company, profile)
     _attach_sources(session, company, scrape)
-    if enrichment is not None:
-        _attach_search_sources(session, company, enrichment.sources)
     company.status = CompanyStatus.extracted
+    # Enrichment (web search) runs as a background job so the request returns
+    # fast; see run_company_enrichment. Mark it queued, or skipped if disabled.
+    company.enrichment_status = (
+        EnrichmentStatus.pending
+        if enrichment_enabled(settings)
+        else EnrichmentStatus.skipped
+    )
     await session.commit()
     # Re-load with sources eagerly populated so response serialization does
     # not emit a lazy-load on the async session.
@@ -124,6 +127,7 @@ def company_to_profile(company: Company) -> CompanyProfile:
         summary=company.summary,
         ownership_status=company.ownership_status,
         investors=list(company.investors or []),
+        competitors=list(company.competitors or []),
         confidence=company.extraction_confidence or {},
     )
 
@@ -149,14 +153,45 @@ def weights_from_settings(row: AppSettings) -> dict[str, float]:
 # -- enrichment -----------------------------------------------------------
 
 
-async def _maybe_enrich(
-    profile: CompanyProfile, url: str, settings: Settings
-) -> CompanyEnrichment | None:
-    if settings.enrich_source.lower() != "claude":
-        return None
-    return await enrich_company(
-        profile, url, api_key=settings.anthropic_api_key, model=settings.anthropic_model
-    )
+def enrichment_enabled(settings: Settings) -> bool:
+    return settings.enrich_source.lower() == "claude"
+
+
+async def run_company_enrichment(company_id: uuid.UUID, settings: Settings) -> None:
+    """Background job: search the web for supplemental firmographics and fold
+    them into an already-extracted company. Runs on its own session (the
+    request's session is long gone by the time this fires) and never raises —
+    failures are recorded on ``enrichment_status``."""
+    async with SessionLocal() as session:
+        company = await session.get(Company, company_id)
+        if company is None:
+            logger.warning("Enrichment target %s no longer exists", company_id)
+            return
+
+        company.enrichment_status = EnrichmentStatus.running
+        await session.commit()
+
+        try:
+            profile = company_to_profile(company)
+            enrichment = await enrich_company(
+                profile,
+                company.url,
+                api_key=settings.anthropic_api_key,
+                model=settings.anthropic_model,
+            )
+            if enrichment is not None:
+                merged = merge_enrichment(profile, enrichment)
+                _apply_enrichment_fields(company, merged)
+                _attach_search_sources(session, company, enrichment.sources)
+            company.enrichment_status = EnrichmentStatus.done
+            await session.commit()
+        except Exception:  # noqa: BLE001 - a failed job must not leave a torn state
+            logger.exception("Enrichment job failed for %s", company_id)
+            await session.rollback()
+            company = await session.get(Company, company_id)
+            if company is not None:
+                company.enrichment_status = EnrichmentStatus.failed
+                await session.commit()
 
 
 def merge_enrichment(
@@ -174,6 +209,8 @@ def merge_enrichment(
         merged.ownership_status = enrichment.ownership_status
     if not merged.investors and enrichment.investors:
         merged.investors = list(enrichment.investors)
+    if not merged.competitors and enrichment.competitors:
+        merged.competitors = list(enrichment.competitors[:_MAX_COMPETITORS])
 
     # Namespace enrichment confidences so they don't clobber extraction's.
     for key, value in (enrichment.confidence or {}).items():
@@ -193,6 +230,18 @@ def _maybe_llm(settings: Settings):
         return None
 
 
+def _apply_enrichment_fields(company: Company, merged: CompanyProfile) -> None:
+    """Persist only the fields enrichment can fill; ``merge_enrichment`` has
+    already enforced that website values win, so this is a straight write.
+    ``raw_extracted`` (the original extraction output) is left untouched."""
+    company.size_employees = merged.size_employees
+    company.revenue_estimate_usd_m = merged.revenue_estimate_usd_m
+    company.ownership_status = merged.ownership_status
+    company.investors = merged.investors
+    company.competitors = merged.competitors
+    company.extraction_confidence = merged.confidence
+
+
 def _apply_profile(company: Company, profile: CompanyProfile) -> None:
     company.name = profile.name
     company.industry = profile.industry
@@ -207,6 +256,7 @@ def _apply_profile(company: Company, profile: CompanyProfile) -> None:
     company.business_model = profile.business_model
     company.ownership_status = profile.ownership_status
     company.investors = profile.investors
+    company.competitors = profile.competitors
     company.raw_extracted = profile.model_dump(mode="json")
     company.extraction_confidence = profile.confidence
 

@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
-from app.enums import CompanyStatus, FetchMethod
+from app.enums import CompanyStatus, EnrichmentStatus, FetchMethod
 from app.models.mixins import TimestampMixin, UUIDMixin
 
 
@@ -32,12 +32,18 @@ class Company(UUIDMixin, TimestampMixin, Base):
 
     ownership_status: Mapped[str | None] = mapped_column(String(128))
     investors: Mapped[list] = mapped_column(JSONB, default=list)
+    competitors: Mapped[list] = mapped_column(JSONB, default=list)
 
     raw_extracted: Mapped[dict | None] = mapped_column(JSONB)
     extraction_confidence: Mapped[dict | None] = mapped_column(JSONB)
     status: Mapped[CompanyStatus] = mapped_column(
         Enum(CompanyStatus, native_enum=False, length=32),
         default=CompanyStatus.pending,
+        nullable=False,
+    )
+    enrichment_status: Mapped[EnrichmentStatus] = mapped_column(
+        Enum(EnrichmentStatus, native_enum=False, length=32),
+        default=EnrichmentStatus.pending,
         nullable=False,
     )
 

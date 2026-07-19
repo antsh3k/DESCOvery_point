@@ -29,6 +29,7 @@ async def test_escalates_to_claude_when_thin(monkeypatch):
     async def fake_claude(url, *, api_key, model):
         return [ScrapedPage(url=url, title=None, text="rich " * 200, method=FetchMethod.claude)]
 
+    monkeypatch.setattr(scraper, "assert_public_http_url", lambda url: None)
     monkeypatch.setattr(scraper, "fetch_site", fake_fetch_site)
     monkeypatch.setattr(scraper, "get_settings", _settings)
     monkeypatch.setattr(scraper.tier2_claude, "fetch", fake_claude)
@@ -48,6 +49,7 @@ async def test_no_escalation_when_rich(monkeypatch):
         called["claude"] = True
         return []
 
+    monkeypatch.setattr(scraper, "assert_public_http_url", lambda url: None)
     monkeypatch.setattr(scraper, "fetch_site", fake_fetch_site)
     monkeypatch.setattr(scraper, "get_settings", _settings)
     monkeypatch.setattr(scraper.tier2_claude, "fetch", fake_claude)
@@ -61,6 +63,7 @@ async def test_tier2_off_never_escalates(monkeypatch):
     async def fake_fetch_site(url, *, max_pages):
         return [_page("tiny")]
 
+    monkeypatch.setattr(scraper, "assert_public_http_url", lambda url: None)
     monkeypatch.setattr(scraper, "fetch_site", fake_fetch_site)
     monkeypatch.setattr(scraper, "get_settings", lambda: _settings(scrape_tier2="off"))
 

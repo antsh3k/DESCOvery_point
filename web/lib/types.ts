@@ -24,8 +24,10 @@ export interface Company {
   business_model: string | null;
   ownership_status: string | null;
   investors: string[];
+  competitors: string[];
   extraction_confidence: Record<string, number> | null;
   status: string;
+  enrichment_status: string;
   sources: CompanySource[];
   created_at: string;
   updated_at: string;

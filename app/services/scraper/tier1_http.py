@@ -12,15 +12,19 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
+from starlette.concurrency import run_in_threadpool
 
 from app.enums import FetchMethod
 from app.services.scraper.base import ScrapedPage
 from app.services.scraper.parse import clean_html
+from app.services.scraper.url_safety import UnsafeURLError, assert_public_http_url, normalize_url
 
 logger = logging.getLogger(__name__)
 
 _USER_AGENT = "descovery-point/0.1 (+https://github.com/antsh3k/DESCOvery_point)"
 _TIMEOUT = httpx.Timeout(15.0)
+_MAX_REDIRECTS = 5
+_REDIRECT_CODES = (301, 302, 303, 307, 308)
 _PRIORITY_KEYWORDS = (
     "about",
     "product",
@@ -35,12 +39,12 @@ _PRIORITY_KEYWORDS = (
 
 async def fetch_site(url: str, *, max_pages: int) -> list[ScrapedPage]:
     """Fetch the homepage plus prioritized internal pages (up to ``max_pages``)."""
-    url = _normalize(url)
+    url = normalize_url(url)
     pages: list[ScrapedPage] = []
     async with httpx.AsyncClient(
         headers={"User-Agent": _USER_AGENT},
         timeout=_TIMEOUT,
-        follow_redirects=True,
+        follow_redirects=False,
     ) as client:
         home_html = await _get(client, url)
         if home_html is None:
@@ -55,15 +59,40 @@ async def fetch_site(url: str, *, max_pages: int) -> list[ScrapedPage]:
 
 
 async def _get(client: httpx.AsyncClient, url: str) -> str | None:
-    try:
-        resp = await client.get(url)
-        resp.raise_for_status()
+    """GET ``url``, manually following redirects (validating each hop first —
+    a public URL can 302 to an internal address, and ``httpx``'s own
+    auto-follow gives us no chance to check the target before it's fetched)."""
+    for _ in range(_MAX_REDIRECTS + 1):
+        try:
+            await run_in_threadpool(assert_public_http_url, url)
+        except UnsafeURLError as exc:
+            logger.warning("Refusing to fetch %s: %s", url, exc)
+            return None
+
+        try:
+            resp = await client.get(url)
+        except httpx.HTTPError as exc:
+            logger.info("fetch failed for %s: %s", url, exc)
+            return None
+
+        if resp.status_code in _REDIRECT_CODES:
+            location = resp.headers.get("location")
+            if not location:
+                return None
+            url = urljoin(url, location)
+            continue
+
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.info("fetch failed for %s: %s", url, exc)
+            return None
         if "text/html" not in resp.headers.get("content-type", ""):
             return None
         return resp.text
-    except httpx.HTTPError as exc:
-        logger.info("fetch failed for %s: %s", url, exc)
-        return None
+
+    logger.info("too many redirects for %s", url)
+    return None
 
 
 def _to_page(url: str, html: str) -> ScrapedPage:
@@ -89,9 +118,3 @@ def _pick_internal_links(base_url: str, html: str, *, limit: int) -> list[str]:
         scored[href] = max(scored.get(href, 0), score)
     ranked = sorted(scored, key=lambda u: scored[u], reverse=True)
     return ranked[:limit]
-
-
-def _normalize(url: str) -> str:
-    if not urlparse(url).scheme:
-        return f"https://{url}"
-    return url
