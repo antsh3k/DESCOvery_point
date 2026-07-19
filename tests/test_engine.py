@@ -48,6 +48,28 @@ async def test_run_match_filters_scores_and_reranks():
     assert by_id[str(no_financials.id)].composite_score is not None
 
 
+async def test_clear_sector_mismatch_is_excluded_even_when_geo_passes():
+    # Healthcare-only fund in the company's geography: it clears the geo hard
+    # filter but the LLM judge flags it a clear sector mismatch, so it must be
+    # excluded from the ranked shortlist (not merely ranked last).
+    software = make_fund(name="SW UK", sectors=["Software"], geographies=["UK"])
+    healthcare = make_fund(name="HC UK", sectors=["Healthcare"], geographies=["UK"])
+
+    results = await run_match(
+        _company(), [software, healthcare], weights=DEFAULT_WEIGHTS, llm=FakeLLM()
+    )
+    by_id = {r.fund_id: r for r in results}
+
+    hc = by_id[str(healthcare.id)]
+    assert hc.passed_hard_filters is True  # geo was fine
+    assert hc.excluded is True
+    assert hc.rank is None  # dropped from the shortlist
+
+    sw = by_id[str(software.id)]
+    assert sw.excluded is False
+    assert sw.rank == 1
+
+
 async def test_run_match_without_llm_is_numeric_only():
     good = make_fund(name="Good", sectors=["Software"], geographies=["UK"])
     results = await run_match(_company(), [good], weights=DEFAULT_WEIGHTS, llm=None)

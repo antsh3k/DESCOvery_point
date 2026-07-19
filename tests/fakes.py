@@ -17,11 +17,16 @@ class FakeLLM(LLMClient):
         raise NotImplementedError("FakeLLM overrides high-level methods")
 
     def judge_thesis(self, *, company: CompanyProfile, fund: dict) -> ThesisJudgment:
-        base = 90.0 if "software" in " ".join(fund.get("sectors", [])).lower() else 50.0
+        sectors = " ".join(fund.get("sectors", [])).lower()
+        base = 90.0 if "software" in sectors else 50.0
+        # A healthcare-only fund is a clear mismatch for the software companies
+        # these tests use — exercise the plausibility exclusion path.
+        plausible = "healthcare" not in sectors or "software" in sectors
         return ThesisJudgment(
             thesis_score=base,
             strategy_score=base - 10,
             justification=f"Fit assessment for {fund['name']}",
+            plausible_fit=plausible,
         )
 
     def rerank(self, *, company: CompanyProfile, candidates: list[dict]) -> RerankResult:

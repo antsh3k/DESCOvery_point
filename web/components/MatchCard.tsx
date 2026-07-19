@@ -3,9 +3,18 @@ import type { Fund, Match } from "@/lib/types";
 import { Badge } from "./Badge";
 import { ScoreBar } from "./ScoreBar";
 
-function matchChip(label: string, value: unknown) {
+// `hardGate` chips (geo) show a red ✗ on a mismatch because a clear miss there
+// excludes the fund. Informational chips (sector) never show red: a mismatch
+// only means "no literal overlap" — the LLM judge decides real sector fit, so a
+// red ✗ next to a strong match would be misleading.
+function matchChip(label: string, value: unknown, hardGate = false) {
   if (value === true) return <Badge key={label} tone="green">{label} ✓</Badge>;
-  if (value === false) return <Badge key={label} tone="red">{label} ✗</Badge>;
+  if (value === false)
+    return hardGate ? (
+      <Badge key={label} tone="red">{label} ✗</Badge>
+    ) : (
+      <Badge key={label} tone="slate">{label} —</Badge>
+    );
   return (
     <Badge key={label} tone="slate">
       {label} —
@@ -58,7 +67,7 @@ export function MatchCard({
 
       <div className="mb-3 flex flex-wrap gap-1.5">
         {matchChip("sector", matched.sector)}
-        {matchChip("geo", matched.geo)}
+        {matchChip("geo", matched.geo, true)}
         {fund.sectors.slice(0, 3).map((s) => (
           <Badge key={s} tone="blue">
             {s}

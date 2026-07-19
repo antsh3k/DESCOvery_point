@@ -11,6 +11,14 @@ class ThesisJudgment(BaseModel):
     thesis_score: float = Field(ge=0, le=100)
     strategy_score: float = Field(ge=0, le=100)
     justification: str
+    plausible_fit: bool = Field(
+        default=True,
+        description=(
+            "False only when the fund is a clear mismatch that should be excluded "
+            "from the shortlist (e.g. the company's sector is plainly outside the "
+            "fund's mandate). Defaults to True so an omission never over-excludes."
+        ),
+    )
 
 
 class RerankItem(BaseModel):

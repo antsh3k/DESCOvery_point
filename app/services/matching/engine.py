@@ -1,12 +1,19 @@
 """Four-stage matching orchestration.
 
-Stage 1  hard filters (geo, sector)
+Stage 1  hard filter on geography (a clear geo mismatch excludes a fund)
 Stage 2  soft numeric range scoring
-Stage 3  LLM thesis/strategy judge (passed candidates only)
+Stage 3  LLM thesis/strategy judge (passed candidates only) — also decides
+         `plausible_fit`, which excludes clear sector/strategy mismatches so
+         they never reach the shortlist
 Stage 4  LLM re-rank + 'why this fits' rationale over the top N
 
+Two things exclude a fund from the shortlist: a clear geography mismatch
+(deterministic, Stage 1) and a clear sector/thesis mismatch (semantic, Stage 3).
+Sector is judged on meaning by the LLM rather than by brittle string overlap.
+
 The LLM is optional: without it, stages 3-4 are skipped and results are ranked
-on the numeric score alone, so the engine still returns a usable shortlist.
+on the numeric score alone (geo filtering still applies), so the engine still
+returns a usable shortlist.
 """
 
 from __future__ import annotations
@@ -39,6 +46,10 @@ class MatchResult:
     rationale: str | None = None
     rank: int | None = None
     weights_used: dict = field(default_factory=dict)
+    # A fund the LLM judged a clear mismatch (or could not be scored at all) is
+    # excluded from the ranked shortlist — it stays unranked so downstream
+    # consumers drop it, just like a hard-filter failure.
+    excluded: bool = False
 
 
 async def run_match(
@@ -58,8 +69,10 @@ async def run_match(
 
         thesis = strategy = None
         rationale = None
+        excluded = False
         if passed and llm is not None:
-            thesis, strategy, rationale = await _judge(llm, company, fund)
+            thesis, strategy, rationale, plausible = await _judge(llm, company, fund)
+            excluded = not plausible
 
         composite, effective = compose(
             thesis=thesis, numeric=num, strategy=strategy, weights=weights
@@ -75,10 +88,11 @@ async def run_match(
                 matched_on=matched_on,
                 rationale=rationale,
                 weights_used=effective,
+                excluded=excluded,
             )
         )
 
-    passed_results = [r for r in results if r.passed_hard_filters]
+    passed_results = [r for r in results if r.passed_hard_filters and not r.excluded]
     passed_results.sort(key=lambda r: _sort_key(r.composite_score), reverse=True)
 
     if llm is not None and passed_results:
@@ -93,15 +107,32 @@ async def run_match(
 
 async def _judge(
     llm: LLMClient, company: CompanyProfile, fund
-) -> tuple[float | None, float | None, str | None]:
-    try:
-        judgment = await run_in_threadpool(
-            llm.judge_thesis, company=company, fund=fund_to_public(fund)
-        )
-        return judgment.thesis_score, judgment.strategy_score, judgment.justification
-    except LLMError as exc:
-        logger.warning("thesis judge failed for fund %s: %s", fund.id, exc)
-        return None, None, None
+) -> tuple[float | None, float | None, str | None, bool]:
+    """Score a fund's fit. Returns (thesis, strategy, rationale, plausible_fit).
+
+    Retries once on a transient model/parse error; if it still can't be scored,
+    the fund is marked implausible so it drops out of the shortlist rather than
+    appearing as an unscored, broken card.
+    """
+    public = fund_to_public(fund)
+    for attempt in range(2):
+        try:
+            judgment = await run_in_threadpool(
+                llm.judge_thesis, company=company, fund=public
+            )
+            return (
+                judgment.thesis_score,
+                judgment.strategy_score,
+                judgment.justification,
+                judgment.plausible_fit,
+            )
+        except LLMError as exc:
+            logger.warning(
+                "thesis judge failed for fund %s (attempt %d/2): %s",
+                fund.id, attempt + 1, exc,
+            )
+    logger.warning("excluding fund %s: could not be scored", fund.id)
+    return None, None, None, False
 
 
 async def _rerank(

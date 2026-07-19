@@ -85,7 +85,14 @@ class LLMClient(ABC):
             "You judge how well a target company fits a PE fund. Score 0-100 on two "
             "axes: `thesis_score` (does the business match what the fund is trying to "
             "build?) and `strategy_score` (buy-and-build / add-on / operational fit). "
-            "Give a one-to-two sentence justification."
+            "Give a one-to-two sentence justification. Also set `plausible_fit`: "
+            "false when the fund is a CLEAR mismatch that should be excluded from the "
+            "shortlist entirely — for example the company's sector is plainly outside "
+            "the fund's stated mandate (a healthcare-only fund vs. a horizontal SaaS "
+            "product), or the fund could not credibly be a buyer. Set it true whenever "
+            "the fund is at least a plausible potential buyer worth showing the user. "
+            "Judge sector fit on meaning, not exact wording — related sectors "
+            "('Apparel' and 'Consumer') are a fit, not a mismatch."
         )
         user = (
             f"Company profile:\n{company.model_dump_json(indent=2)}\n\n"
