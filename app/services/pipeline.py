@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from starlette.concurrency import run_in_threadpool
 
 from app.config import Settings
@@ -57,11 +58,12 @@ async def ingest_and_extract(
         raise ExtractionError(str(exc)) from exc
 
     _apply_profile(company, profile)
-    _attach_sources(company, scrape)
+    _attach_sources(session, company, scrape)
     company.status = CompanyStatus.extracted
     await session.commit()
-    await session.refresh(company)
-    return company
+    # Re-load with sources eagerly populated so response serialization does
+    # not emit a lazy-load on the async session.
+    return await _get_with_sources(session, company.id)
 
 
 async def run_company_match(
@@ -162,17 +164,30 @@ def _apply_profile(company: Company, profile: CompanyProfile) -> None:
     company.extraction_confidence = profile.confidence
 
 
-def _attach_sources(company: Company, scrape) -> None:
-    for page in scrape.pages:
-        company.sources.append(
-            CompanySource(
-                source_url=page.url,
-                page_title=page.title,
-                fetched_at=datetime.now(timezone.utc),
-                fetch_method=page.method or FetchMethod.http,
-                snippet=(page.text[:_SNIPPET_CHARS] or None),
-            )
+async def _get_with_sources(session: AsyncSession, company_id: uuid.UUID) -> Company:
+    result = await session.execute(
+        select(Company)
+        .where(Company.id == company_id)
+        .options(selectinload(Company.sources))
+    )
+    return result.scalar_one()
+
+
+def _attach_sources(session: AsyncSession, company: Company, scrape) -> None:
+    # Build rows with the FK set explicitly rather than appending to the
+    # lazy `company.sources` collection, which would emit a lazy-load SELECT
+    # outside a greenlet context on the async session.
+    session.add_all(
+        CompanySource(
+            company_id=company.id,
+            source_url=page.url,
+            page_title=page.title,
+            fetched_at=datetime.now(timezone.utc),
+            fetch_method=page.method or FetchMethod.http,
+            snippet=(page.text[:_SNIPPET_CHARS] or None),
         )
+        for page in scrape.pages
+    )
 
 
 def _f(value) -> float | None:

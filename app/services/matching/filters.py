@@ -1,8 +1,10 @@
-"""Stage 1 — hard filters on geography and sector.
+"""Stage 1 — hard filter on geography (sector is scored, not gated).
 
 Filters are deliberately *forgiving*: an unknown company attribute or an
 unconstrained fund is treated as "no constraint" (pass), never as a failure —
-we don't want thin SME data to wipe out the whole shortlist.
+we don't want thin SME data to wipe out the whole shortlist. Only a clear
+geography mismatch excludes a fund; sector fit is assessed downstream by the LLM
+thesis judge rather than a brittle string match here.
 """
 
 from __future__ import annotations
@@ -49,8 +51,16 @@ def geo_ok(company, fund) -> bool | None:
 
 
 def passes_hard_filters(company, fund) -> tuple[bool, dict]:
-    """Return (passed, matched_on). None sub-results count as pass."""
+    """Return (passed, matched_on).
+
+    Only geography is a hard gate — a clear geo mismatch excludes a fund. Sector
+    overlap is *informational only* (surfaced in ``matched_on`` for the UI and the
+    LLM thesis judge): sector taxonomies rarely align on a substring
+    (``"Apparel & Fashion"`` vs a fund's ``"Consumer"``), so letting sector fail the
+    gate would wrongly wipe out otherwise-plausible funds. Whether the thesis
+    actually fits is left to Stage 3's LLM judge.
+    """
     s = sector_ok(company, fund)
     g = geo_ok(company, fund)
-    passed = (s is not False) and (g is not False)
+    passed = g is not False
     return passed, {"sector": s, "geo": g}

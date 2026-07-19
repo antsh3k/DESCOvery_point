@@ -47,7 +47,15 @@ def test_passes_hard_filters_treats_none_as_pass():
     assert matched_on["geo"] is None
 
 
-def test_hard_fail_on_sector_mismatch():
+def test_sector_mismatch_does_not_gate():
+    # Sector is informational only — a mismatch must not exclude when geo is fine.
     company = _company(industry="Healthcare", location_country="UK")
-    passed, _ = passes_hard_filters(company, make_fund(sectors=["Software"]))
+    passed, matched_on = passes_hard_filters(company, make_fund(sectors=["Software"]))
+    assert passed is True
+    assert matched_on["sector"] is False
+
+
+def test_hard_fail_on_geo_mismatch():
+    company = _company(industry="Software", location_country="US")
+    passed, _ = passes_hard_filters(company, make_fund(geographies=["UK"]))
     assert passed is False
