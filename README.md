@@ -1,4 +1,4 @@
-# thesis_match
+# DESCOvery_point
 SME_analytics and matching with the most suitable PE funds
 
 ## Brief

@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.routers import companies, funds, matches, settings
 
 app = FastAPI(
-    title="thesis_match",
+    title="DESCOvery_point",
     version="0.1.0",
     summary="SME analytics and matching with the most suitable PE funds.",
 )

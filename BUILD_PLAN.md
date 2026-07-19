@@ -1,4 +1,4 @@
-# thesis_match — Build Plan
+# DESCOvery_point — Build Plan
 
 _SME analytics → matching with the most suitable PE funds._
 
@@ -206,7 +206,7 @@ v1 runs scrape/extract/match **synchronously** (with sensible timeouts). If late
 ## 13. Suggested repo structure
 
 ```
-thesis_match/
+DESCOvery_point/
 ├─ pyproject.toml            # uv-managed
 ├─ .env / .env.example       # secrets (.env gitignored)
 ├─ app/

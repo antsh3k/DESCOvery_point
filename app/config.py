@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # --- Database ---
     database_url: str = (
-        "postgresql+psycopg://thesis:thesis@localhost:5432/thesis_match"
+        "postgresql+psycopg://descovery:descovery@localhost:5432/descovery_point"
     )
 
     # --- App ---

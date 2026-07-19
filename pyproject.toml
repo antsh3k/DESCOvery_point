@@ -1,5 +1,5 @@
 [project]
-name = "thesis-match"
+name = "descovery-point"
 version = "0.1.0"
 description = "SME analytics and matching with the most suitable PE funds."
 readme = "README.md"

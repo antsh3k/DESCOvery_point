@@ -19,7 +19,7 @@ from app.services.scraper.parse import clean_html
 
 logger = logging.getLogger(__name__)
 
-_USER_AGENT = "thesis-match/0.1 (+https://github.com/antsh3k/thesis_match)"
+_USER_AGENT = "descovery-point/0.1 (+https://github.com/antsh3k/DESCOvery_point)"
 _TIMEOUT = httpx.Timeout(15.0)
 _PRIORITY_KEYWORDS = (
     "about",

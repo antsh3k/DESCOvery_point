@@ -2,15 +2,15 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-thesis}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thesis}
-      POSTGRES_DB: ${POSTGRES_DB:-thesis_match}
+      POSTGRES_USER: ${POSTGRES_USER:-descovery}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-descovery}
+      POSTGRES_DB: ${POSTGRES_DB:-descovery_point}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thesis}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-descovery}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,7 +21,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-thesis}:${POSTGRES_PASSWORD:-thesis}@db:5432/${POSTGRES_DB:-thesis_match}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-descovery}:${POSTGRES_PASSWORD:-descovery}@db:5432/${POSTGRES_DB:-descovery_point}
       LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5}

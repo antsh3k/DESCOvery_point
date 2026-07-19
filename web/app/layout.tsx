@@ -4,7 +4,7 @@ import { Nav } from "@/components/Nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "thesis_match",
+  title: "DESCOvery_point",
   description: "SME analytics and matching with the most suitable PE funds.",
 };
 

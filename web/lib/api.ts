@@ -1,4 +1,4 @@
-// Typed client for the thesis_match FastAPI backend.
+// Typed client for the DESCOvery_point FastAPI backend.
 
 import type {
   Company,
