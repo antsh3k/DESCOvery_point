@@ -12,8 +12,8 @@ class CompanyStatus(StrEnum):
 
 class FetchMethod(StrEnum):
     http = "http"
-    headless = "headless"
-    tavily = "tavily"
+    claude = "claude"
+    search = "search"
 
 
 class FundProvenance(StrEnum):

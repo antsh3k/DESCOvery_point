@@ -35,9 +35,32 @@ class CompanyProfile(BaseModel):
     products: list[str] = Field(default_factory=list)
     business_model: str | None = None
     summary: str | None = None
+    ownership_status: str | None = Field(
+        default=None,
+        description=(
+            "Ownership/control, e.g. 'founder-owned', 'PE-owned', 'VC-backed', "
+            "'public', 'subsidiary'. Rarely on the website; enriched via search."
+        ),
+    )
+    investors: list[str] = Field(
+        default_factory=list,
+        description="Known investors, backers, parent company, or acquirers.",
+    )
     confidence: dict[str, float] = Field(
         default_factory=dict, description="Per-field confidence in [0, 1]."
     )
+    sources: list[ExtractedSource] = Field(default_factory=list)
+
+
+class CompanyEnrichment(BaseModel):
+    """Supplemental firmographics gathered by web search (LinkedIn / PitchBook /
+    Crunchbase / news), used to fill gaps the company website leaves open."""
+
+    size_employees: int | None = None
+    revenue_estimate_usd_m: float | None = None
+    ownership_status: str | None = None
+    investors: list[str] = Field(default_factory=list)
+    confidence: dict[str, float] = Field(default_factory=dict)
     sources: list[ExtractedSource] = Field(default_factory=list)
 
 
@@ -71,6 +94,8 @@ class CompanyRead(BaseModel):
     products: list
     summary: str | None
     business_model: str | None
+    ownership_status: str | None
+    investors: list
     extraction_confidence: dict | None
     status: CompanyStatus
     sources: list[CompanySourceRead]

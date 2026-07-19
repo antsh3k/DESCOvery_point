@@ -6,10 +6,10 @@
   color-scheme: light;
 }
 
-/* Nudge the base up so the whole UI scales a touch larger on desktop; all
+/* Nudge the base up so the whole UI scales larger on desktop; all
    rem-based sizing (Tailwind's text/spacing) grows proportionally. */
 html {
-  font-size: 17px;
+  font-size: 19px;
 }
 
 body {

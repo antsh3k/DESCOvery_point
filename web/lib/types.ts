@@ -22,6 +22,8 @@ export interface Company {
   products: string[];
   summary: string | null;
   business_model: string | null;
+  ownership_status: string | null;
+  investors: string[];
   extraction_confidence: Record<string, number> | null;
   status: string;
   sources: CompanySource[];

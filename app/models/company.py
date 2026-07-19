@@ -30,6 +30,9 @@ class Company(UUIDMixin, TimestampMixin, Base):
     summary: Mapped[str | None] = mapped_column(Text)
     business_model: Mapped[str | None] = mapped_column(Text)
 
+    ownership_status: Mapped[str | None] = mapped_column(String(128))
+    investors: Mapped[list] = mapped_column(JSONB, default=list)
+
     raw_extracted: Mapped[dict | None] = mapped_column(JSONB)
     extraction_confidence: Mapped[dict | None] = mapped_column(JSONB)
     status: Mapped[CompanyStatus] = mapped_column(

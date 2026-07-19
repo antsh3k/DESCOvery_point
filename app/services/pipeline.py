@@ -19,7 +19,8 @@ from starlette.concurrency import run_in_threadpool
 from app.config import Settings
 from app.enums import CompanyStatus, FetchMethod
 from app.models import AppSettings, Company, CompanySource, Fund, Match
-from app.schemas.company import CompanyProfile
+from app.schemas.company import CompanyEnrichment, CompanyProfile, ExtractedSource
+from app.services.enrichment import enrich_company
 from app.services.extractor import extract_company_profile
 from app.services.llm import LLMError, get_llm_client
 from app.services.matching import run_match
@@ -57,8 +58,14 @@ async def ingest_and_extract(
         await session.commit()
         raise ExtractionError(str(exc)) from exc
 
+    enrichment = await _maybe_enrich(profile, url, settings)
+    if enrichment is not None:
+        profile = merge_enrichment(profile, enrichment)
+
     _apply_profile(company, profile)
     _attach_sources(session, company, scrape)
+    if enrichment is not None:
+        _attach_search_sources(session, company, enrichment.sources)
     company.status = CompanyStatus.extracted
     await session.commit()
     # Re-load with sources eagerly populated so response serialization does
@@ -115,6 +122,8 @@ def company_to_profile(company: Company) -> CompanyProfile:
         products=list(company.products or []),
         business_model=company.business_model,
         summary=company.summary,
+        ownership_status=company.ownership_status,
+        investors=list(company.investors or []),
         confidence=company.extraction_confidence or {},
     )
 
@@ -135,6 +144,42 @@ def weights_from_settings(row: AppSettings) -> dict[str, float]:
         "numeric": _f(row.weight_numeric) or DEFAULT_WEIGHTS["numeric"],
         "strategy": _f(row.weight_strategy) or DEFAULT_WEIGHTS["strategy"],
     }
+
+
+# -- enrichment -----------------------------------------------------------
+
+
+async def _maybe_enrich(
+    profile: CompanyProfile, url: str, settings: Settings
+) -> CompanyEnrichment | None:
+    if settings.enrich_source.lower() != "claude":
+        return None
+    return await enrich_company(
+        profile, url, api_key=settings.anthropic_api_key, model=settings.anthropic_model
+    )
+
+
+def merge_enrichment(
+    profile: CompanyProfile, enrichment: CompanyEnrichment
+) -> CompanyProfile:
+    """Fold search results into the profile. Website extraction stays
+    authoritative — enrichment only fills fields the site left empty."""
+    merged = profile.model_copy(deep=True)
+
+    if merged.size_employees is None and enrichment.size_employees is not None:
+        merged.size_employees = enrichment.size_employees
+    if merged.revenue_estimate_usd_m is None and enrichment.revenue_estimate_usd_m is not None:
+        merged.revenue_estimate_usd_m = enrichment.revenue_estimate_usd_m
+    if not merged.ownership_status and enrichment.ownership_status:
+        merged.ownership_status = enrichment.ownership_status
+    if not merged.investors and enrichment.investors:
+        merged.investors = list(enrichment.investors)
+
+    # Namespace enrichment confidences so they don't clobber extraction's.
+    for key, value in (enrichment.confidence or {}).items():
+        merged.confidence.setdefault(f"enriched.{key}", value)
+
+    return merged
 
 
 # -- internals ------------------------------------------------------------
@@ -160,6 +205,8 @@ def _apply_profile(company: Company, profile: CompanyProfile) -> None:
     company.products = profile.products
     company.summary = profile.summary
     company.business_model = profile.business_model
+    company.ownership_status = profile.ownership_status
+    company.investors = profile.investors
     company.raw_extracted = profile.model_dump(mode="json")
     company.extraction_confidence = profile.confidence
 
@@ -187,6 +234,23 @@ def _attach_sources(session: AsyncSession, company: Company, scrape) -> None:
             snippet=(page.text[:_SNIPPET_CHARS] or None),
         )
         for page in scrape.pages
+    )
+
+
+def _attach_search_sources(
+    session: AsyncSession, company: Company, sources: list[ExtractedSource]
+) -> None:
+    session.add_all(
+        CompanySource(
+            company_id=company.id,
+            source_url=source.url,
+            page_title=source.title,
+            fetched_at=datetime.now(timezone.utc),
+            fetch_method=FetchMethod.search,
+            snippet=(source.snippet[:_SNIPPET_CHARS] if source.snippet else None),
+        )
+        for source in sources
+        if source.url
     )
 
 

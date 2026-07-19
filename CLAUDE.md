@@ -37,9 +37,9 @@ Tests are intentionally DB- and network-free (LLM faked, HTTP mocked with `respx
 
 ## Project status
 
-M0–M5 of `BUILD_PLAN.md` are built and verified: FastAPI + async SQLAlchemy/Postgres backend (tiered scraper with Tavily/Playwright Tier-2 fallback, LLM extractor, 4-stage matching engine), a Next.js dashboard (`web/`), and a Docker Compose stack. "Later" items (SEC EDGAR ingestion, embeddings/pgvector, background jobs, auth) are not built. Read `BUILD_PLAN.md` before feature work.
+M0–M5 of `BUILD_PLAN.md` are built and verified: FastAPI + async SQLAlchemy/Postgres backend (tiered scraper with a Claude `web_fetch` Tier-2 fallback, LLM extractor, 4-stage matching engine), a Next.js dashboard (`web/`), and a Docker Compose stack. "Later" items (SEC EDGAR ingestion, embeddings/pgvector, background jobs, auth) are not built. Read `BUILD_PLAN.md` before feature work.
 
-Playwright is an optional extra: `uv sync --extra browser && uv run playwright install chromium`. `SCRAPE_TIER2=tavily|playwright|off` selects the fallback.
+Tier-2 fallback runs entirely through Claude's server-side `web_fetch` tool (uses `ANTHROPIC_API_KEY`; no extra deps or browser). `SCRAPE_TIER2=claude|off` selects the fallback.
 
 ## What this project is
 
@@ -49,8 +49,8 @@ An AI-powered tool that takes a company's **website URL** as input, analyzes the
 
 The pipeline is **scrape → extract → store → match → rank**, each a separable, testable unit under `app/services/`:
 
-1. **Scrape** (`services/scraper/`) — tiered: Tier-1 HTTP fetch + BeautifulSoup parse by default; a `detector` decides whether to escalate to Tier-2 (Tavily extract or headless Playwright, selected by `SCRAPE_TIER2`).
-2. **Extract** (`services/extractor.py` + `services/llm/`) — provider-agnostic `LLMClient` (Anthropic default, OpenAI alt) coerces scraped text into the `CompanyProfile` schema. Numerics are optional; **missing is never treated as zero**.
+1. **Scrape** (`services/scraper/`) — tiered: Tier-1 HTTP fetch + BeautifulSoup parse by default; a `detector` decides whether to escalate to Tier-2 (Claude's server-side `web_fetch` tool in `tier2_claude.py`, selected by `SCRAPE_TIER2`).
+2. **Extract** (`services/extractor.py` + `services/llm/`) — provider-agnostic `LLMClient` (Anthropic default, OpenAI alt) coerces scraped text into the `CompanyProfile` schema. Numerics are optional; **missing is never treated as zero**. An optional **enrich** step (`services/enrichment.py`, `ENRICH_SOURCE=claude|off`) then uses Claude's server-side `web_search` tool to fill gaps the website leaves open — headcount, revenue, ownership, investors — merging into empty fields only (website stays authoritative) and citing each source with `fetch_method=search`.
 3. **Match** (`services/matching/`) — 4 stages: hard filters (geo/sector, forgiving on unknowns) → soft numeric range scoring → LLM thesis/strategy judge → LLM re-rank + rationale on the top N. Composite score uses configurable weights (`settings`) and **renormalises over present dimensions** so missing financials don't penalise.
 
 `services/pipeline.py` ties these to the DB and is what the routers call. Models in `app/models/`, schemas in `app/schemas/`, routers in `app/routers/`, fund seed in `app/seed/`.

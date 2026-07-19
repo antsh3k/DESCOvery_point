@@ -122,8 +122,24 @@ export function CompanySummary({
           />
           <Fact label="Revenue" value={money(company.revenue_estimate_usd_m)} />
           <Fact label="EBITDA" value={money(company.ebitda_estimate_usd_m)} />
+          <Fact label="Ownership" value={company.ownership_status ?? "unknown"} />
           <Fact label="Sub-industry" value={company.sub_industry ?? "—"} />
         </dl>
+
+        {company.investors.length > 0 && (
+          <div className="mb-5">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Investors &amp; backers
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {company.investors.map((inv) => (
+                <Badge key={inv} tone="slate">
+                  {inv}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
 
         {company.business_model && (
           <div className="mb-5">

@@ -33,9 +33,11 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     # --- Scraping ---
-    scrape_tier2: str = "off"  # "tavily" | "playwright" | "off"
+    scrape_tier2: str = "claude"  # "claude" | "off"
     scrape_max_pages: int = 6
-    tavily_api_key: str = ""
+
+    # --- Enrichment (supplemental firmographics via web search) ---
+    enrich_source: str = "claude"  # "claude" | "off"
 
 
 @lru_cache

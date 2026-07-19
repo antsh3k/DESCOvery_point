@@ -15,7 +15,6 @@ dependencies = [
     "pydantic-settings>=2.14.2",
     "pydantic[email]>=2.13.4",
     "sqlalchemy[asyncio]>=2.0",
-    "tavily-python>=0.7.26",
     "uvicorn[standard]>=0.51.0",
 ]
 
@@ -25,11 +24,6 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 seed = "app.seed.load:main"
-
-[project.optional-dependencies]
-browser = [
-    "playwright>=1.61.0",
-]
 
 [dependency-groups]
 dev = [

@@ -30,7 +30,7 @@ This is the working blueprint for building a clean, demoable v1 and layering com
 | API | **FastAPI** + Uvicorn | Async, Pydantic v2 models, auto OpenAPI docs at `/docs`. |
 | DB | **PostgreSQL** | SQLAlchemy 2.0 (async) + Alembic migrations. Start with plain columns + JSONB for flexible fields. |
 | Validation | Pydantic v2 | Shared schemas for API + LLM structured output. |
-| Scraping | `httpx` + `selectolax`/`BeautifulSoup`; **Playwright** fallback; **Tavily** optional | Tiered — see §5. |
+| Scraping | `httpx` + `BeautifulSoup` Tier-1; **Claude `web_fetch`** Tier-2 fallback | Tiered — see §5. |
 | LLM | Anthropic SDK (`anthropic`) default; OpenAI SDK (`openai`) alt | Provider abstraction — see §9. Default model `claude-sonnet-5`. |
 | Frontend | **Next.js** (App Router, TypeScript) + Tailwind | Talks to FastAPI over REST. Simple dashboard; no SSR auth needed in v1. |
 | Container | **Docker** + docker-compose | Deferred to a later milestone (§12). App + Postgres + (optional) frontend. |
@@ -94,7 +94,7 @@ Initial tables (Alembic-managed). Use JSONB where the shape is fluid; promote to
 - `created_at`, `updated_at`
 
 **`company_sources`** — provenance for the summary
-- `id`, `company_id` (fk), `source_url`, `page_title`, `fetched_at`, `fetch_method` (enum: http/headless/tavily), `snippet` (text used as evidence)
+- `id`, `company_id` (fk), `source_url`, `page_title`, `fetched_at`, `fetch_method` (enum: http/claude), `snippet` (text used as evidence)
 
 **`funds`**
 - `id` (uuid, pk), `name`, `firm`, `website_url`, `source_url` (authoritative link shown on dashboard)
@@ -120,11 +120,9 @@ Default cheap, escalate only when needed:
 
 1. **Tier 1 — HTTP fetch + parse (default).** `httpx.get` a small page set (`/`, `/about`, `/products`, `/services`, `/contact`), extract clean text + capture each `source_url` into `company_sources`.
 2. **Detector.** After Tier 1, decide if the content is insufficient — e.g. total visible text below a token/char threshold, near-empty `<body>`, obvious JS-app shell (`__NEXT_DATA__`/`ng-app`/root-div-only), or an anti-bot/consent wall. Only if the detector trips do we escalate.
-3. **Tier 2 — fallback.** Two interchangeable options, config-selectable:
-   - **Tavily** (`tavily-python`) extract/search — fast, no browser to manage; good default fallback and can also enrich beyond the site.
-   - **Playwright headless** — render JS, then re-extract. Heavier; use when Tavily is off or a full render is required.
+3. **Tier 2 — fallback.** **Claude `web_fetch`** (`tier2_claude.py`) — the company URL is handed to Claude's server-side `web_fetch` tool; Anthropic's infrastructure fetches the page (bypassing bot protection / JS shells that defeat Tier-1) and the fetched text is returned as `ScrapedPage`s for the extractor. Uses the existing `ANTHROPIC_API_KEY`; no extra service key or headless browser.
 
-Config: `SCRAPE_TIER2=tavily|playwright|off`, `SCRAPE_MAX_PAGES`. Always record `fetch_method` per source so the dashboard can show how each fact was obtained. Respect `robots.txt` and set a descriptive User-Agent.
+Config: `SCRAPE_TIER2=claude|off`, `SCRAPE_MAX_PAGES`. Always record `fetch_method` per source so the dashboard can show how each fact was obtained. Respect `robots.txt` and set a descriptive User-Agent.
 
 ---
 
@@ -197,7 +195,7 @@ v1 runs scrape/extract/match **synchronously** (with sensible timeouts). If late
 2. **M1 — Ingest + extract.** ✅ Tier-1 scraper, extractor → `CompanyProfile`, persist company + sources.
 3. **M2 — Funds + matching.** ✅ Seed dataset loader, 4-stage engine, persist matches, composite scoring with weights + missingness rule.
 4. **M3 — Frontend.** ✅ Next.js dashboard: URL input, company summary w/ sources, ranked fund cards (score breakdown, matched-on, "why this fits", source link), live re-weighting, settings.
-5. **M4 — Add-fund + tiered scrape.** ✅ `from-url` fund flow, detector + Tier-2 fallback (Tavily / Playwright).
+5. **M4 — Add-fund + tiered scrape.** ✅ `from-url` fund flow, detector + Tier-2 fallback (Claude `web_fetch`).
 6. **M5 — Docker.** ✅ Backend + frontend Dockerfiles + docker-compose (db + api + web); entrypoint migrates + seeds. Verified end-to-end.
 7. **Later.** SEC EDGAR ingestion; embeddings/pgvector prefilter; background jobs; auth/multi-user; export.
 
@@ -217,7 +215,7 @@ DESCOvery_point/
 │  ├─ schemas/               # Pydantic (CompanyProfile, FundMandate, Match, ...)
 │  ├─ routers/               # companies, funds, matches, settings
 │  ├─ services/
-│  │  ├─ scraper/            # tier1_http, detector, tier2_tavily|playwright
+│  │  ├─ scraper/            # tier1_http, detector, tier2_claude
 │  │  ├─ extractor.py
 │  │  ├─ matching/           # filters, numeric, thesis_judge, rerank, score
 │  │  └─ llm/                # base, anthropic_client, openai_client
@@ -231,7 +229,7 @@ DESCOvery_point/
 
 ## 14. Environment & config
 
-`.env` / `.env.example` already created and hold: `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, Postgres vars + `DATABASE_URL`, app host/port. Add as needed: `TAVILY_API_KEY`, `SCRAPE_TIER2`, `SCRAPE_MAX_PAGES`. `.env` is gitignored.
+`.env` / `.env.example` already created and hold: `LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, Postgres vars + `DATABASE_URL`, app host/port. Add as needed: `SCRAPE_TIER2`, `SCRAPE_MAX_PAGES`. `.env` is gitignored.
 
 Common commands:
 ```
@@ -259,5 +257,5 @@ uv run pytest
 | Fund universe (v1) | ~15–25 curated mandate-complete seed | Full EDGAR ingestion now |
 | EDGAR mandates | LLM-inferred, flagged `ai_inferred` + confidence | Authoritative-only |
 | Add-fund input | Fund **URL** → extract → confirm (manual fallback) | Manual form only |
-| Tier-2 scrape | Tavily | Playwright headless |
+| Tier-2 scrape | Claude `web_fetch` | Headless-browser render |
 | Execution | Synchronous per request | Background jobs |
