@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/Badge";
 import { api } from "@/lib/api";
@@ -36,14 +36,18 @@ export default function FundsPage() {
   }
 
   const q = query.trim().toLowerCase();
-  const filtered = q
-    ? funds.filter((f) =>
-        [f.name, f.firm ?? "", ...f.sectors, ...f.geographies]
-          .join(" ")
-          .toLowerCase()
-          .includes(q),
-      )
-    : funds;
+  const filtered = useMemo(
+    () =>
+      q
+        ? funds.filter((f) =>
+            [f.name, f.firm ?? "", ...f.sectors, ...f.geographies]
+              .join(" ")
+              .toLowerCase()
+              .includes(q),
+          )
+        : funds,
+    [funds, q],
+  );
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
@@ -164,11 +168,8 @@ export default function FundsPage() {
           </table>
           <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
             <span>
-              {filtered.length === 0
-                ? q
-                  ? "No matches"
-                  : "No funds"
-                : `Showing ${start + 1}–${start + visible.length} of ${filtered.length}${q ? ` (filtered from ${funds.length})` : ""}`}
+              {filtered.length > 0 &&
+                `Showing ${start + 1}–${start + visible.length} of ${filtered.length}${q ? ` (filtered from ${funds.length})` : ""}`}
             </span>
             <div className="flex items-center gap-2">
               <button

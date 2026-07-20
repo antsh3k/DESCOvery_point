@@ -1,6 +1,10 @@
 """End-to-end matching engine behaviour (LLM faked)."""
 
+import threading
+import time
+
 from app.schemas.company import CompanyProfile
+from app.schemas.match import FitJudgment
 from app.services.matching import run_match
 from app.services.matching.score import DEFAULT_WEIGHTS
 from tests.fakes import FakeLLM, make_fund
@@ -83,3 +87,67 @@ async def test_run_match_without_llm_is_size_only():
     assert r.mandate_score == 100.0  # deterministic size fit only
     assert r.composite_score == 100.0
     assert r.rank == 1
+
+
+async def test_llm_judge_top_k_caps_by_deterministic_size_fit():
+    # Three funds pass hard filters with distinct size fits (via distinct
+    # check-size bands); capping at 2 must judge the two best-sized ones and
+    # exclude the worst-sized one for cost, without ever calling the LLM on it.
+    best = make_fund(
+        name="Best size", sectors=["Software"], geographies=["UK"],
+        check_size_min_usd_m=1, check_size_max_usd_m=200,  # implied EV (32) comfortably inside
+    )
+    middling = make_fund(
+        name="Middling size", sectors=["Software"], geographies=["UK"],
+        check_size_min_usd_m=25, check_size_max_usd_m=40,  # implied EV (32) inside, tight band
+    )
+    worst = make_fund(
+        name="Worst size", sectors=["Software"], geographies=["UK"],
+        check_size_min_usd_m=500, check_size_max_usd_m=600,  # implied EV (32) far below band
+    )
+
+    results = await run_match(
+        _company(), [best, middling, worst],
+        weights=DEFAULT_WEIGHTS, llm=FakeLLM(), llm_judge_top_k=2,
+    )
+    by_id = {r.fund_id: r for r in results}
+
+    judged = [by_id[str(f.id)] for f in (best, middling)]
+    for r in judged:
+        assert r.strategy_score is not None  # reached the LLM judge
+
+    cut = by_id[str(worst.id)]
+    assert cut.strategy_score is None  # never reached the LLM judge
+    assert cut.excluded is True  # cut for cost, dropped from the shortlist
+    assert cut.rank is None
+
+
+async def test_llm_judge_calls_run_concurrently_not_sequentially():
+    funds = [
+        make_fund(name=f"Fund {i}", sectors=["Software"], geographies=["UK"])
+        for i in range(5)
+    ]
+
+    class SlowConcurrencyTrackingLLM(FakeLLM):
+        def __init__(self):
+            self.lock = threading.Lock()
+            self.in_flight = 0
+            self.max_in_flight = 0
+
+        def judge_fit(self, *, company, fund):
+            with self.lock:
+                self.in_flight += 1
+                self.max_in_flight = max(self.max_in_flight, self.in_flight)
+            time.sleep(0.05)
+            with self.lock:
+                self.in_flight -= 1
+            return FitJudgment(
+                mandate_fit=90.0, strategy_fit=80.0, value_creation_fit=70.0,
+                justification="ok", plausible_fit=True,
+            )
+
+    llm = SlowConcurrencyTrackingLLM()
+    await run_match(_company(), funds, weights=DEFAULT_WEIGHTS, llm=llm)
+
+    # A sequential for-loop could never have more than 1 in flight at once.
+    assert llm.max_in_flight > 1

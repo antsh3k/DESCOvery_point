@@ -1,18 +1,25 @@
+import { InfoHint } from "./InfoHint";
+
 export function ScoreBar({
   label,
   value,
   hint,
+  detail,
 }: {
   label: string;
   value: number | null;
   hint?: string;
+  detail?: string;
 }) {
   const pct = value === null ? 0 : Math.max(0, Math.min(100, value));
   return (
     <div>
       <div className="mb-1 flex justify-between text-xs text-slate-500">
-        <span title={hint} className={hint ? "cursor-help" : undefined}>
-          {label}
+        <span className="inline-flex items-center">
+          <span title={hint} className={hint ? "cursor-help" : undefined}>
+            {label}
+          </span>
+          {detail && <InfoHint text={detail} />}
         </span>
         <span>{value === null ? "n/a" : Math.round(value)}</span>
       </div>

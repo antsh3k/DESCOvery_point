@@ -68,3 +68,35 @@ def test_size_fit_none_when_nothing_assessable():
     score, detail = size_fit(company, fund)
     assert score is None
     assert detail["assessed"] == []
+
+
+def test_size_fit_falls_back_to_aum_implied_check_size_band():
+    # No explicit check-size band, but AUM is disclosed (the common case for
+    # EDGAR-sourced funds): $1,000m AUM implies a $50-150m check-size band
+    # (5-15%), and a $60m-implied EV (EBITDA 7.5 * 8) sits inside it.
+    company = _company(ebitda_estimate_usd_m=7.5)
+    fund = make_fund(
+        ebitda_min_usd_m=None, ebitda_max_usd_m=None,
+        revenue_min_usd_m=None, revenue_max_usd_m=None,
+        check_size_min_usd_m=None, check_size_max_usd_m=None,
+        gross_asset_value_usd=1_000_000_000,  # raw USD, i.e. $1,000m
+    )
+    score, detail = size_fit(company, fund)
+    assert score == 100.0
+    assert detail["assessed"] == ["check_size"]
+    assert detail["imputed"] == ["check_size"]  # implied from AUM, flagged for the UI
+
+
+def test_size_fit_ignores_aum_when_fund_has_its_own_check_size_band():
+    # An implied AUM band must never override a fund's own disclosed band.
+    company = _company(ebitda_estimate_usd_m=4)
+    fund = make_fund(
+        ebitda_min_usd_m=None, ebitda_max_usd_m=None,
+        revenue_min_usd_m=None, revenue_max_usd_m=None,
+        check_size_min_usd_m=10, check_size_max_usd_m=20,
+        gross_asset_value_usd=1_000_000_000,  # would imply $50-150m if used
+    )
+    score, detail = size_fit(company, fund)
+    # EV = 4 * 8 = 32, outside the fund's real 10-20 band, not the AUM-implied one.
+    assert detail["imputed"] == []
+    assert score is not None and score < 100.0

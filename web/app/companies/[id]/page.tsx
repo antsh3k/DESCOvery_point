@@ -9,14 +9,9 @@ import { CompanySummary } from "@/components/CompanySummary";
 import { MatchCard } from "@/components/MatchCard";
 import { WeightControls } from "@/components/WeightControls";
 import { api } from "@/lib/api";
+import { DEFAULT_WEIGHTS } from "@/lib/pillars";
 import { compose, type Weights } from "@/lib/score";
 import type { Company, Fund, Match } from "@/lib/types";
-
-const DEFAULT_WEIGHTS: Weights = {
-  mandate: 0.4,
-  strategy: 0.35,
-  value_creation: 0.25,
-};
 
 export default function CompanyPage() {
   const params = useParams<{ id: string }>();

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { InfoHint } from "@/components/InfoHint";
 import { api } from "@/lib/api";
 import { PILLARS } from "@/lib/pillars";
 import type { Settings } from "@/lib/types";
@@ -60,11 +61,16 @@ export default function SettingsPage() {
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="mb-3 text-sm font-semibold">Scoring weights</h2>
         <div className="grid grid-cols-3 gap-3">
-          {PILLARS.map(({ key, label: pillarLabel, description }) => {
+          {PILLARS.map(({ key, label: pillarLabel, description, how }) => {
             const field = `weight_${key}` as const;
             return (
               <div key={key}>
-                <label className={label}>{pillarLabel}</label>
+                <label className={label}>
+                  <span className="inline-flex items-center">
+                    {pillarLabel}
+                    <InfoHint text={how} />
+                  </span>
+                </label>
                 <input
                   type="number"
                   min={0}

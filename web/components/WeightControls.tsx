@@ -1,5 +1,6 @@
 "use client";
 
+import { InfoHint } from "./InfoHint";
 import { PILLARS } from "@/lib/pillars";
 import type { Weights } from "@/lib/score";
 
@@ -29,10 +30,13 @@ export function WeightControls({
         )}
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
-        {PILLARS.map(({ key, label, description }) => (
+        {PILLARS.map(({ key, label, description, how }) => (
           <label key={key} className="text-sm">
             <div className="mb-1 flex justify-between text-slate-500">
-              <span>{label}</span>
+              <span className="inline-flex items-center">
+                {label}
+                <InfoHint text={how} />
+              </span>
               <span>{Math.round(weights[key] * 100)}%</span>
             </div>
             <input

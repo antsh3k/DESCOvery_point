@@ -58,6 +58,8 @@ def make_fund(**overrides) -> SimpleNamespace:
         revenue_max_usd_m=120,
         stage="buyout",
         thesis="B2B software buyouts.",
+        gross_asset_value_usd=None,
+        thesis_embedding=None,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)

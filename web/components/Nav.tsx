@@ -26,7 +26,7 @@ export function Nav() {
       <nav className="mx-auto flex max-w-7xl items-center gap-8 px-6 py-5">
         <Link href="/" className="flex items-center gap-2 text-lg font-semibold text-ink">
           <Landmark />
-          DESCOvery<span className="text-accent">_point</span>
+          DESCOvery <span className="text-accent">Point</span>
         </Link>
         <div className="flex gap-6 text-base text-slate-600">
           <Link href="/" className="hover:text-accent">

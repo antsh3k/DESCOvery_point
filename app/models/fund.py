@@ -2,6 +2,7 @@
 
 from datetime import date
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Date, Enum, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 from app.enums import FundProvenance, MandateSource
 from app.models.mixins import TimestampMixin, UUIDMixin
+
+EMBEDDING_DIMENSIONS = 1536  # must match config.embedding_dimensions / the OpenAI model used
 
 
 class Fund(UUIDMixin, TimestampMixin, Base):
@@ -56,3 +59,10 @@ class Fund(UUIDMixin, TimestampMixin, Base):
     prime_broker_name: Mapped[str | None] = mapped_column(String(512))
     custodian_name: Mapped[str | None] = mapped_column(String(512))
     regulatory_id: Mapped[str | None] = mapped_column(String(128))
+
+    # --- Semantic pre-filter (embeddings of thesis + sectors + stage) ---
+    # Null until the embedding backfill runs, or for a fund with no thesis/
+    # sector text at all to embed.
+    thesis_embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(EMBEDDING_DIMENSIONS)
+    )

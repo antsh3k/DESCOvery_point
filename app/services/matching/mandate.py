@@ -17,6 +17,14 @@ Both recoveries use coarse, sector-agnostic multiples — they turn "no signal"
 into "approximate signal", not a precise valuation, and are flagged in the
 detail so the UI can mark them as inferred.
 
+A third recovery does the same on the *fund* side: most EDGAR-sourced funds
+disclose a regulatory ``gross_asset_value_usd`` (current AUM) but no explicit
+check-size band (marketing sites rarely publish one). A fund's typical
+check size is conventionally a small slice of its AUM — deployed across many
+portfolio companies, not all at once — so an implied band derived from AUM
+recovers a usable size signal for the large majority of funds that would
+otherwise be entirely unassessable here.
+
 Missingness rule (unchanged): an axis we cannot assess is excluded from the
 mean, never scored as zero. If nothing is assessable the score is ``None`` and
 its weight is redistributed downstream (see :mod:`.score`).
@@ -29,6 +37,13 @@ from __future__ import annotations
 EV_EBITDA_MULTIPLE = 8.0  # implied enterprise value per unit of EBITDA
 EV_REVENUE_MULTIPLE = 1.5  # fallback EV per unit of revenue when EBITDA unknown
 REVENUE_PER_EMPLOYEE_USD_M = 0.2  # ~$200k revenue/head, last-resort headcount proxy
+
+# A fund's per-deal check size as a share of its total AUM — deployed across
+# a portfolio (typically 10-20+ positions), not concentrated in one. Used only
+# when the fund discloses no explicit check-size band of its own.
+AUM_CHECK_SIZE_LOW_PCT = 0.05
+AUM_CHECK_SIZE_HIGH_PCT = 0.15
+_USD_PER_USD_M = 1_000_000.0  # gross_asset_value_usd is raw USD; bands are USD millions
 
 
 def range_fit(value: float | None, lo: float | None, hi: float | None) -> float | None:
@@ -81,10 +96,24 @@ def _company_ev(company) -> tuple[float | None, bool]:
     return None, False
 
 
+def _fund_check_size_band(fund) -> tuple[float | None, float | None, bool]:
+    """The fund's check-size band in USD m, or one implied from AUM when the
+    fund discloses no explicit band. Returns (lo, hi, imputed)."""
+    lo, hi = fund.check_size_min_usd_m, fund.check_size_max_usd_m
+    if lo is not None or hi is not None:
+        return lo, hi, False
+    aum = getattr(fund, "gross_asset_value_usd", None)
+    if not aum:
+        return None, None, False
+    aum_usd_m = float(aum) / _USD_PER_USD_M
+    return aum_usd_m * AUM_CHECK_SIZE_LOW_PCT, aum_usd_m * AUM_CHECK_SIZE_HIGH_PCT, True
+
+
 def size_fit(company, fund) -> tuple[float | None, dict]:
     """Mean of available size fits (EBITDA, revenue, check size); None if none assessable."""
     revenue, revenue_imputed = _company_revenue(company)
     ev, ev_imputed = _company_ev(company)
+    check_size_lo, check_size_hi, check_size_band_imputed = _fund_check_size_band(fund)
 
     metrics = {
         "ebitda": range_fit(
@@ -93,9 +122,7 @@ def size_fit(company, fund) -> tuple[float | None, dict]:
             fund.ebitda_max_usd_m,
         ),
         "revenue": range_fit(revenue, fund.revenue_min_usd_m, fund.revenue_max_usd_m),
-        "check_size": range_fit(
-            ev, fund.check_size_min_usd_m, fund.check_size_max_usd_m
-        ),
+        "check_size": range_fit(ev, check_size_lo, check_size_hi),
     }
     available = {k: v for k, v in metrics.items() if v is not None}
     if not available:
@@ -104,7 +131,7 @@ def size_fit(company, fund) -> tuple[float | None, dict]:
     imputed = []
     if "revenue" in available and revenue_imputed:
         imputed.append("revenue")
-    if "check_size" in available and ev_imputed:
+    if "check_size" in available and (ev_imputed or check_size_band_imputed):
         imputed.append("check_size")
 
     score = sum(available.values()) / len(available)

@@ -1,10 +1,12 @@
 """Four-stage matching orchestration.
 
 Stage 1  hard filters — geography and gross size mismatch exclude a fund
-Stage 2  deterministic size fit (the quantitative half of Mandate fit)
-Stage 3  LLM fit judge (passed candidates only) — scores three axes
-         (mandate/strategy/value-creation) and decides `plausible_fit`, which
-         excludes clear sector/deal mismatches so they never reach the shortlist
+Stage 2  deterministic size fit (the quantitative half of Mandate fit) —
+         cheap, no LLM call; computed for every fund that passes Stage 1
+Stage 3  LLM fit judge, on the top ``llm_judge_top_k`` Stage-1 survivors
+         ranked by Stage 2's score — scores three axes (mandate/strategy/
+         value-creation) and decides `plausible_fit`, which excludes clear
+         sector/deal mismatches so they never reach the shortlist
 Stage 4  LLM re-rank + 'why this fits' rationale over the top N
 
 Three pillars are scored and composed (see the rubric):
@@ -13,6 +15,18 @@ Three pillars are scored and composed (see the rubric):
 * **strategy** — the LLM's deal/playbook judgment (`strategy_fit`);
 * **value_creation** — the LLM's "why this fund for this company" judgment.
 
+Stage 1 alone doesn't bound cost: it's deliberately lenient (never excludes on
+an unknown attribute), so at a large fund universe most candidates survive it.
+Stage 3 is the expensive step — one LLM call per fund — so Stage 1 survivors
+are ranked by two free signals before the cap: Stage 2's deterministic size
+fit, and (when a ``company_embedding`` is supplied) cosine similarity between
+that embedding and the fund's stored thesis embedding — a semantic read on
+whether the fund's actual thesis relates to this business, which sector
+substring-matching can't reliably answer (see :mod:`.filters`). The judge
+calls for the capped set run concurrently rather than one at a time. A fund
+cut by the cap is excluded from the shortlist (cost, not merit) rather than
+shown unscored.
+
 The LLM is optional: without it, stages 3-4 are skipped and results are ranked
 on the deterministic size fit alone (geo/size filtering still applies), so the
 engine still returns a usable shortlist.
@@ -20,6 +34,7 @@ engine still returns a usable shortlist.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 
@@ -27,6 +42,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.schemas.company import CompanyProfile
 from app.services.llm.base import LLMClient, LLMError
+from app.services.matching.embeddings import semantic_fit
 from app.services.matching.filters import passes_hard_filters
 from app.services.matching.mandate import size_fit
 from app.services.matching.score import compose
@@ -34,6 +50,11 @@ from app.services.matching.score import compose
 logger = logging.getLogger(__name__)
 
 RERANK_TOP_N = 10
+# How many Stage-1 survivors ever reach the LLM judge, ranked by Stage 2's
+# free deterministic score. Bounds cost/latency at a large fund universe;
+# irrelevant at the small ones this was originally sized for.
+LLM_JUDGE_TOP_K = 100
+_JUDGE_CONCURRENCY = 8
 
 
 @dataclass(slots=True)
@@ -67,47 +88,74 @@ async def run_match(
     weights: dict[str, float],
     llm: LLMClient | None = None,
     top_n: int = RERANK_TOP_N,
+    llm_judge_top_k: int = LLM_JUDGE_TOP_K,
+    company_embedding: list[float] | None = None,
 ) -> list[MatchResult]:
     results: list[MatchResult] = []
+    fund_by_id: dict[str, object] = {}
+    # (result, pre_filter_rank) — the rank is a Stage-3-selection aid only,
+    # never shown to the user or folded into mandate_score.
+    judge_candidates: list[tuple[MatchResult, float | None]] = []
 
+    # Stages 1-2: hard filter + free deterministic size fit, for every fund.
     for fund in funds:
         passed, matched_on = passes_hard_filters(company, fund)
         size, size_detail = size_fit(company, fund)
+        semantic = semantic_fit(company_embedding, fund)
         matched_on["size_detail"] = size_detail
+        matched_on["semantic_score"] = semantic
 
-        mandate_fit = strategy = value_creation = None
-        rationale = None
-        excluded = False
+        result = MatchResult(
+            fund_id=str(fund.id),
+            passed_hard_filters=passed,
+            mandate_score=size,
+            matched_on=matched_on,
+        )
+        results.append(result)
+        fund_by_id[result.fund_id] = fund
         if passed and llm is not None:
-            mandate_fit, strategy, value_creation, rationale, plausible = await _judge(
-                llm, company, fund
-            )
-            excluded = not plausible
+            judge_candidates.append((result, _mean_present(size, semantic)))
 
-        # Mandate fit = the deterministic size fit and the LLM's sector-centrality
-        # judgment, averaged over whichever is present.
-        mandate = _mean_present(size, mandate_fit)
+    # Stage 3: the expensive step. Rank Stage-1 survivors by the free size fit
+    # and semantic similarity (whichever are present) and only send the top
+    # `llm_judge_top_k` to the LLM, concurrently; the rest are cut for cost,
+    # not merit, and excluded from the shortlist.
+    if judge_candidates:
+        judge_candidates.sort(
+            key=lambda rc: rc[1] if rc[1] is not None else -1.0,
+            reverse=True,
+        )
+        to_judge = [r for r, _ in judge_candidates[:llm_judge_top_k]]
+        for r, _ in judge_candidates[llm_judge_top_k:]:
+            r.excluded = True
 
+        sem = asyncio.Semaphore(_JUDGE_CONCURRENCY)
+
+        async def _judge_one(result: MatchResult) -> None:
+            async with sem:
+                fund = fund_by_id[result.fund_id]
+                mandate_fit, strategy, value_creation, rationale, plausible = await _judge(
+                    llm, company, fund
+                )
+                # Mandate fit = the deterministic size fit and the LLM's
+                # sector-centrality judgment, averaged over whichever is present.
+                result.mandate_score = _mean_present(result.mandate_score, mandate_fit)
+                result.strategy_score = strategy
+                result.value_creation_score = value_creation
+                result.rationale = rationale
+                result.excluded = not plausible
+
+        await asyncio.gather(*(_judge_one(r) for r in to_judge))
+
+    for result in results:
         composite, effective = compose(
-            mandate=mandate,
-            strategy=strategy,
-            value_creation=value_creation,
+            mandate=result.mandate_score,
+            strategy=result.strategy_score,
+            value_creation=result.value_creation_score,
             weights=weights,
         )
-        results.append(
-            MatchResult(
-                fund_id=str(fund.id),
-                passed_hard_filters=passed,
-                mandate_score=mandate,
-                strategy_score=strategy,
-                value_creation_score=value_creation,
-                composite_score=composite,
-                matched_on=matched_on,
-                rationale=rationale,
-                weights_used=effective,
-                excluded=excluded,
-            )
-        )
+        result.composite_score = composite
+        result.weights_used = effective
 
     passed_results = [r for r in results if r.passed_hard_filters and not r.excluded]
     passed_results.sort(key=lambda r: _sort_key(r.composite_score), reverse=True)

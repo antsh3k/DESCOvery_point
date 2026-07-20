@@ -90,11 +90,12 @@ export function MatchCard({
       )}
 
       <div className="my-4 grid gap-3 sm:grid-cols-3">
-        {PILLARS.map(({ key, label, description }) => (
+        {PILLARS.map(({ key, label, description, how }) => (
           <ScoreBar
             key={key}
             label={label}
             hint={description}
+            detail={how}
             value={match[`${key}_score`]}
           />
         ))}

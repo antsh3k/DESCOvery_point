@@ -25,6 +25,7 @@ from app.services.enrichment import enrich_company
 from app.services.extractor import extract_company_profile
 from app.services.llm import LLMError, get_llm_client
 from app.services.matching import run_match
+from app.services.matching.embeddings import company_embedding_text, embed_text
 from app.services.matching.score import DEFAULT_WEIGHTS
 from app.services.scraper import scrape_company
 from app.services.scraper.url_safety import canonical_url_key, normalize_url
@@ -209,8 +210,11 @@ async def run_company_match(
 
     profile = company_to_profile(company)
     llm = _maybe_llm(settings)
+    company_embedding = await _company_embedding(profile, settings)
 
-    results = await run_match(profile, list(funds), weights=weights, llm=llm)
+    results = await run_match(
+        profile, list(funds), weights=weights, llm=llm, company_embedding=company_embedding
+    )
 
     run_id = uuid.uuid4()
     await session.execute(delete(Match).where(Match.company_id == company.id))
@@ -337,6 +341,18 @@ def _maybe_llm(settings: Settings):
     except LLMError as exc:
         logger.info("matching without LLM (%s); size-fit-only ranking", exc)
         return None
+
+
+async def _company_embedding(profile: CompanyProfile, settings: Settings) -> list[float] | None:
+    """Embed the company's profile once per match run for the semantic
+    pre-filter. None (silently) without an OpenAI key — embeddings are an
+    optimisation, matching still works on size fit alone without them."""
+    text = company_embedding_text(profile)
+    if text is None:
+        return None
+    return await run_in_threadpool(
+        embed_text, text, api_key=settings.openai_api_key, model=settings.openai_embedding_model
+    )
 
 
 def _apply_enrichment_fields(company: Company, merged: CompanyProfile) -> None:

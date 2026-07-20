@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     edgar_data_dir: str = "data/edgar"
     edgar_ingest_limit: int = 100
 
+    # --- Fund embeddings (semantic pre-filter, pgvector) ---
+    # Anthropic has no embeddings API; OpenAI's is used regardless of
+    # llm_provider — set openai_api_key even when using Claude for everything else.
+    openai_embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 1536
+
 
 @lru_cache
 def get_settings() -> Settings:
