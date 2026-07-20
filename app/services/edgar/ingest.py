@@ -134,6 +134,93 @@ async def backfill_regulatory_metadata(
     return stats
 
 
+_BULK_INSERT_BATCH = 1000
+
+
+@dataclass
+class BulkRegisterStats:
+    candidates_found: int = 0
+    skipped_existing: int = 0
+    registered: int = 0
+
+
+async def bulk_register_funds(
+    *,
+    form_d_quarters: list[str],
+    include_form_adv: bool,
+    limit: int | None = None,
+    settings: Settings | None = None,
+) -> BulkRegisterStats:
+    """Register every (or up to ``limit``) fresh candidate as a ``Fund`` row
+    with full regulatory metadata but no investment mandate — sectors,
+    geographies, check size, and thesis stay empty, and
+    ``mandate_source=pending`` flags that distinctly from a scraped/
+    LLM-inferred mandate (never fabricated; genuinely not attempted yet).
+
+    Pure CSV parsing + DB inserts: no scraping, no LLM calls, so this scales
+    to the entire ADV candidate pool (tens of thousands) in minutes rather
+    than the hours ``ingest_edgar_funds``'s scrape+extract step would take at
+    that scale. Run that function afterwards (targeting these by name or
+    significance) to layer a real mandate onto whichever funds matter most.
+    """
+    settings = settings or get_settings()
+    stats = BulkRegisterStats()
+
+    candidates = _gather_candidates(form_d_quarters, include_form_adv, settings)
+    stats.candidates_found = len(candidates)
+    if not candidates:
+        logger.warning("No candidate sources available — nothing to register")
+        return stats
+    candidates.sort(key=lambda c: -c.significance)
+
+    async with SessionLocal() as session:
+        existing_names = {
+            normalize_name(n)
+            for n in (await session.execute(select(Fund.name))).scalars().all()
+        }
+
+    fresh = [c for c in candidates if c.dedupe_key not in existing_names]
+    stats.skipped_existing = len(candidates) - len(fresh)
+    if limit is not None:
+        fresh = fresh[:limit]
+
+    for i in range(0, len(fresh), _BULK_INSERT_BATCH):
+        batch = fresh[i : i + _BULK_INSERT_BATCH]
+        async with SessionLocal() as session:
+            session.add_all(
+                Fund(
+                    name=c.name,
+                    firm=c.firm,
+                    website_url=c.website_url,
+                    source_url=c.source_url,
+                    sectors=[],
+                    geographies=[],
+                    provenance=FundProvenance.edgar,
+                    mandate_source=MandateSource.pending,
+                    mandate_confidence=None,
+                    fund_type_raw=c.fund_type_raw,
+                    gross_asset_value_usd=c.gross_asset_value_usd,
+                    amount_raised_usd=c.amount_raised_usd,
+                    investor_count=c.investor_count,
+                    filing_date=c.filing_date,
+                    auditor_name=c.auditor_name,
+                    prime_broker_name=c.prime_broker_name,
+                    custodian_name=c.custodian_name,
+                    regulatory_id=c.regulatory_id,
+                )
+                for c in batch
+            )
+            await session.commit()
+        stats.registered += len(batch)
+        logger.info("Bulk-registered %d/%d", stats.registered, len(fresh))
+
+    logger.info(
+        "Bulk register done: candidates=%d skipped_existing=%d registered=%d",
+        stats.candidates_found, stats.skipped_existing, stats.registered,
+    )
+    return stats
+
+
 async def ingest_edgar_funds(
     *,
     form_d_quarters: list[str],

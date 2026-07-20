@@ -108,7 +108,15 @@ export default function FundsPage() {
                     {range(f.ebitda_min_usd_m, f.ebitda_max_usd_m)}
                   </td>
                   <td className="px-4 py-2">
-                    <Badge tone={f.mandate_source === "ai_inferred" ? "amber" : "green"}>
+                    <Badge
+                      tone={
+                        f.mandate_source === "pending"
+                          ? "slate"
+                          : f.mandate_source === "ai_inferred"
+                            ? "amber"
+                            : "green"
+                      }
+                    >
                       {f.mandate_source}
                     </Badge>
                   </td>

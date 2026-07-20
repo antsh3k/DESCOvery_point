@@ -36,6 +36,7 @@ class FundProvenance(StrEnum):
 class MandateSource(StrEnum):
     authoritative = "authoritative"
     ai_inferred = "ai_inferred"
+    pending = "pending"  # fund identity + regulatory data known; mandate not yet extracted
 
 
 class LLMProvider(StrEnum):
