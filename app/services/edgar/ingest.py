@@ -53,17 +53,18 @@ class IngestStats:
     added_names: list[str] = field(default_factory=list)
 
 
-async def ingest_edgar_funds(
-    *,
-    form_d_quarters: list[str],
-    include_form_adv: bool,
-    limit: int,
-    settings: Settings | None = None,
-) -> IngestStats:
-    settings = settings or get_settings()
-    data_dir = Path(settings.edgar_data_dir)
-    stats = IngestStats()
+@dataclass
+class BackfillStats:
+    candidates_found: int = 0
+    matched: int = 0
+    unmatched: int = 0
+    updated_names: list[str] = field(default_factory=list)
 
+
+def _gather_candidates(
+    form_d_quarters: list[str], include_form_adv: bool, settings: Settings
+) -> list[FundCandidate]:
+    data_dir = Path(settings.edgar_data_dir)
     candidate_groups: list[list[FundCandidate]] = []
     for quarter in form_d_quarters:
         quarter_dir = data_dir / "form_d" / quarter
@@ -77,13 +78,77 @@ async def ingest_edgar_funds(
             candidate_groups.append(parse_form_adv(adv_dir))
         else:
             logger.warning("Form ADV bulk data not downloaded; skipping")
+    return merge_candidates(*candidate_groups) if candidate_groups else []
 
-    if not candidate_groups:
+
+async def backfill_regulatory_metadata(
+    *,
+    form_d_quarters: list[str],
+    include_form_adv: bool,
+    settings: Settings | None = None,
+) -> BackfillStats:
+    """Re-parse the bulk data and fill in regulatory fields (gross assets,
+    investor count, auditor, prime broker, custodian, filing date, ...) on
+    existing ``provenance=edgar`` funds, matched by normalized name.
+
+    Pure CSV parsing + a DB update — no scraping, no LLM calls, safe to
+    re-run any time the parsers gain new fields without repeating the slow
+    scrape+extract step.
+    """
+    settings = settings or get_settings()
+    stats = BackfillStats()
+
+    candidates = _gather_candidates(form_d_quarters, include_form_adv, settings)
+    stats.candidates_found = len(candidates)
+    if not candidates:
+        logger.warning("No candidate sources available — nothing to backfill")
+        return stats
+    by_name = {c.dedupe_key: c for c in candidates}
+
+    async with SessionLocal() as session:
+        funds = (
+            await session.execute(select(Fund).where(Fund.provenance == FundProvenance.edgar))
+        ).scalars().all()
+        for fund in funds:
+            candidate = by_name.get(normalize_name(fund.name))
+            if candidate is None:
+                stats.unmatched += 1
+                continue
+            fund.fund_type_raw = candidate.fund_type_raw
+            fund.gross_asset_value_usd = candidate.gross_asset_value_usd
+            fund.amount_raised_usd = candidate.amount_raised_usd
+            fund.investor_count = candidate.investor_count
+            fund.filing_date = candidate.filing_date
+            fund.auditor_name = candidate.auditor_name
+            fund.prime_broker_name = candidate.prime_broker_name
+            fund.custodian_name = candidate.custodian_name
+            fund.regulatory_id = candidate.regulatory_id
+            stats.matched += 1
+            stats.updated_names.append(fund.name)
+        await session.commit()
+
+    logger.info(
+        "Backfill done: candidates=%d matched=%d unmatched=%d",
+        stats.candidates_found, stats.matched, stats.unmatched,
+    )
+    return stats
+
+
+async def ingest_edgar_funds(
+    *,
+    form_d_quarters: list[str],
+    include_form_adv: bool,
+    limit: int,
+    settings: Settings | None = None,
+) -> IngestStats:
+    settings = settings or get_settings()
+    stats = IngestStats()
+
+    candidates = _gather_candidates(form_d_quarters, include_form_adv, settings)
+    stats.candidates_found = len(candidates)
+    if not candidates:
         logger.warning("No candidate sources available — nothing to ingest")
         return stats
-
-    candidates = merge_candidates(*candidate_groups)
-    stats.candidates_found = len(candidates)
     # Website-known candidates first (cheaper, more reliable than a
     # web_search resolution); AUM / offering size as the tiebreaker.
     candidates.sort(key=lambda c: (c.website_url is None, -c.significance))
@@ -148,6 +213,15 @@ async def ingest_edgar_funds(
                             provenance=FundProvenance.edgar,
                             mandate_source=MandateSource.ai_inferred,
                             mandate_confidence=_EDGAR_CONFIDENCE,
+                            fund_type_raw=candidate.fund_type_raw,
+                            gross_asset_value_usd=candidate.gross_asset_value_usd,
+                            amount_raised_usd=candidate.amount_raised_usd,
+                            investor_count=candidate.investor_count,
+                            filing_date=candidate.filing_date,
+                            auditor_name=candidate.auditor_name,
+                            prime_broker_name=candidate.prime_broker_name,
+                            custodian_name=candidate.custodian_name,
+                            regulatory_id=candidate.regulatory_id,
                         )
                         session.add(fund)
                         await session.commit()

@@ -6,6 +6,13 @@ candidates, infers a mandate for each new one, and inserts it as a Fund row::
     uv run ingest-edgar
     uv run ingest-edgar --source form_d --quarter 2026q2 --limit 20
     uv run ingest-edgar --skip-download  # reuse whatever's already cached
+
+``--backfill-metadata`` re-parses the bulk data and fills in regulatory
+fields (gross assets, investor count, auditor, prime broker, custodian,
+filing date) on funds already in the DB, matched by name. Pure CSV parsing —
+no scraping, no LLM calls — safe to re-run any time the parsers gain fields::
+
+    uv run ingest-edgar --backfill-metadata
 """
 
 from __future__ import annotations
@@ -16,7 +23,7 @@ import logging
 
 from app.config import get_settings
 from app.services.edgar.fetch import download_form_adv, download_form_d
-from app.services.edgar.ingest import ingest_edgar_funds
+from app.services.edgar.ingest import backfill_regulatory_metadata, ingest_edgar_funds
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +56,12 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Reuse whatever is already cached under settings.edgar_data_dir instead of re-fetching",
     )
+    parser.add_argument(
+        "--backfill-metadata",
+        action="store_true",
+        help="Fill in regulatory fields on existing funds instead of ingesting new ones "
+        "(no scraping/LLM calls — safe and fast to re-run)",
+    )
     return parser.parse_args()
 
 
@@ -67,6 +80,18 @@ async def _main() -> None:
                 download_form_d(quarter, settings=settings)
         if include_form_adv:
             download_form_adv(settings=settings)
+
+    if args.backfill_metadata:
+        stats = await backfill_regulatory_metadata(
+            form_d_quarters=quarters if include_form_d else [],
+            include_form_adv=include_form_adv,
+            settings=settings,
+        )
+        logger.info(
+            "Backfilled %d fund(s) (%d unmatched): %s",
+            stats.matched, stats.unmatched, ", ".join(stats.updated_names) or "(none)",
+        )
+        return
 
     stats = await ingest_edgar_funds(
         form_d_quarters=quarters if include_form_d else [],

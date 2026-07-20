@@ -10,15 +10,20 @@ https://www.sec.gov/data-research/sec-markets-data/form-d-data-sets):
 - ``ISSUERS.tsv`` — the filing issuer (the fund entity itself for a pooled
   fund), keyed by the same ``ACCESSIONNUMBER``, with ``CIK``/``ENTITYNAME``/
   address fields.
+- ``FORMDSUBMISSION.tsv`` — one row per filing, keyed by ``ACCESSIONNUMBER``,
+  with ``FILING_DATE`` (format ``DD-MON-YYYY``, e.g. ``30-JUN-2026``).
 
 Form D carries no website field for the issuer, so every candidate here needs
-website resolution (see ``mandate.py``) before it can be scraped.
+website resolution (see ``mandate.py``) before it can be scraped. Its
+``TOTALOFFERINGAMOUNT`` is capital *raised* in this offering — a related but
+distinct figure from Form ADV's Gross Asset Value (current fund AUM).
 """
 
 from __future__ import annotations
 
 import csv
 import logging
+from datetime import date, datetime
 from pathlib import Path
 
 from app.services.edgar.candidates import FundCandidate
@@ -36,6 +41,7 @@ _EDGAR_COMPANY_URL = (
 def parse_form_d(quarter_dir: Path) -> list[FundCandidate]:
     """Return one candidate per Private-Equity-Fund issuer in this quarter."""
     issuers = _load_issuers(quarter_dir / "ISSUERS.tsv")
+    filing_dates = _load_filing_dates(quarter_dir / "FORMDSUBMISSION.tsv")
 
     candidates: list[FundCandidate] = []
     skipped_no_issuer = 0
@@ -50,6 +56,7 @@ def parse_form_d(quarter_dir: Path) -> list[FundCandidate]:
             if issuer is None:
                 skipped_no_issuer += 1
                 continue
+            amount_raised = _parse_amount(row.get("TOTALOFFERINGAMOUNT"))
             candidates.append(
                 FundCandidate(
                     name=issuer["name"],
@@ -58,8 +65,12 @@ def parse_form_d(quarter_dir: Path) -> list[FundCandidate]:
                     source_url=_EDGAR_COMPANY_URL.format(cik=issuer["cik"]),
                     state=None,
                     country=issuer["location"],
-                    significance=_parse_amount(row.get("TOTALOFFERINGAMOUNT")),
+                    significance=amount_raised,
                     origin="form_d",
+                    fund_type_raw=row.get("INVESTMENTFUNDTYPE") or None,
+                    amount_raised_usd=amount_raised or None,
+                    filing_date=filing_dates.get(row["ACCESSIONNUMBER"]),
+                    regulatory_id=issuer["cik"],
                 )
             )
 
@@ -90,6 +101,25 @@ def _load_issuers(path: Path) -> dict[str, dict]:
                 "location": row.get("STATEORCOUNTRYDESCRIPTION") or None,
             }
     return issuers
+
+
+def _load_filing_dates(path: Path) -> dict[str, date]:
+    dates: dict[str, date] = {}
+    with path.open(encoding="latin-1", newline="") as f:
+        for row in csv.DictReader(f, delimiter="\t"):
+            parsed = _parse_filing_date(row.get("FILING_DATE"))
+            if parsed is not None:
+                dates[row["ACCESSIONNUMBER"]] = parsed
+    return dates
+
+
+def _parse_filing_date(raw: str | None) -> date | None:
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%d-%b-%Y").date()
+    except ValueError:
+        return None
 
 
 def _parse_amount(raw: str | None) -> float:

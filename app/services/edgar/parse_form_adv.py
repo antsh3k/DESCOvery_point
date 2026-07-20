@@ -16,6 +16,11 @@ data dictionary for the CSV column layout, only the PDF form instructions):
   Fund" / ...), and ``Gross Asset Value``.
 - ``*_Schedule_D_7B1A28_websites.csv`` — the fund's *own* website(s), keyed
   by ``ReferenceID`` (preferred over the adviser's site when present).
+- ``*_Schedule_D_7B1A23.csv`` — the fund's auditor ("Name of Auditing Firm"),
+  keyed by ``ReferenceID``.
+- ``*_Schedule_D_7B1A24.csv`` — the fund's prime broker ("Name of Prime
+  Broker") and whether it also custodies assets ("Custodian" Y/N), keyed by
+  ``ReferenceID``.
 
 Both the ERA (Exempt Reporting Adviser) and IA (registered Investment
 Adviser) file families share this layout under different filename prefixes.
@@ -41,9 +46,18 @@ def parse_form_adv(bulk_dir: Path) -> list[FundCandidate]:
     """Return one candidate per unique Private-Equity Fund ID across both the
     ERA and IA file families, deduped to each fund's most recent filing."""
     advisers = _load_advisers(bulk_dir)
-    adviser_websites = _load_keyed_websites(bulk_dir, "Schedule_D_1I", key_field="FilingID")
-    fund_websites = _load_keyed_websites(
+    adviser_websites = _load_keyed_values(bulk_dir, "Schedule_D_1I", key_field="FilingID")
+    fund_websites = _load_keyed_values(
         bulk_dir, "Schedule_D_7B1A28_websites", key_field="ReferenceID", value_field="Website Address"
+    )
+    auditors = _load_keyed_values(
+        bulk_dir, "Schedule_D_7B1A23", key_field="ReferenceID", value_field="Name of Auditing Firm"
+    )
+    prime_brokers = _load_keyed_values(
+        bulk_dir, "Schedule_D_7B1A24", key_field="ReferenceID", value_field="Name of Prime Broker"
+    )
+    custodian_flags = _load_keyed_values(
+        bulk_dir, "Schedule_D_7B1A24", key_field="ReferenceID", value_field="Custodian"
     )
 
     best: dict[str, tuple[datetime, FundCandidate]] = {}
@@ -52,7 +66,10 @@ def parse_form_adv(bulk_dir: Path) -> list[FundCandidate]:
         if path is None:
             logger.warning("No %s_Schedule_D_7B1 file found under %s", prefix, bulk_dir)
             continue
-        _accumulate(path, advisers, adviser_websites, fund_websites, best)
+        _accumulate(
+            path, advisers, adviser_websites, fund_websites, auditors, prime_brokers,
+            custodian_flags, best,
+        )
 
     candidates = [candidate for _, candidate in best.values()]
     logger.info("Form ADV bulk data: %d private-equity-fund candidate(s)", len(candidates))
@@ -64,6 +81,9 @@ def _accumulate(
     advisers: dict[str, dict],
     adviser_websites: dict[str, str],
     fund_websites: dict[str, str],
+    auditors: dict[str, str],
+    prime_brokers: dict[str, str],
+    custodian_flags: dict[str, str],
     best: dict[str, tuple[datetime, FundCandidate]],
 ) -> None:
     skipped_no_adviser = 0
@@ -84,7 +104,9 @@ def _accumulate(
             if existing is not None and existing[0] >= adviser["date"]:
                 continue
 
-            website = fund_websites.get(row.get("ReferenceID", "")) or adviser_websites.get(filing_id)
+            reference_id = row.get("ReferenceID", "")
+            website = fund_websites.get(reference_id) or adviser_websites.get(filing_id)
+            custodian_flag = custodian_flags.get(reference_id)
             candidate = FundCandidate(
                 name=row["Fund Name"],
                 firm=adviser["name"],
@@ -94,6 +116,14 @@ def _accumulate(
                 country=row.get("Country") or None,
                 significance=_parse_amount(row.get("Gross Asset Value")),
                 origin="form_adv",
+                fund_type_raw=row.get("Fund Type") or None,
+                gross_asset_value_usd=_parse_amount(row.get("Gross Asset Value")) or None,
+                investor_count=_parse_int(row.get("Owners")),
+                filing_date=adviser["date"].date() if adviser["date"] > datetime.min else None,
+                auditor_name=auditors.get(reference_id),
+                prime_broker_name=prime_brokers.get(reference_id),
+                custodian_name=prime_brokers.get(reference_id) if custodian_flag == "Y" else None,
+                regulatory_id=fund_id,
             )
             best[fund_id] = (adviser["date"], candidate)
 
@@ -129,10 +159,10 @@ def _load_advisers(bulk_dir: Path) -> dict[str, dict]:
     return advisers
 
 
-def _load_keyed_websites(
+def _load_keyed_values(
     bulk_dir: Path, filename_fragment: str, *, key_field: str, value_field: str = "Website"
 ) -> dict[str, str]:
-    """Build {key_field value -> first website} across every matching file."""
+    """Build {key_field value -> first value_field value} across every matching file."""
     out: dict[str, str] = {}
     for path in sorted(bulk_dir.glob(f"*{filename_fragment}*.csv")):
         with path.open(encoding="latin-1", newline="") as f:
@@ -150,10 +180,14 @@ def _find(bulk_dir: Path, filename_fragment: str) -> Path | None:
 
 
 def _parse_date(raw: str) -> datetime:
-    try:
-        return datetime.strptime(raw, "%m/%d/%Y")
-    except (ValueError, TypeError):
-        return datetime.min
+    # ERA filings use a bare date ("11/13/2012"); IA (registered adviser)
+    # filings append a timestamp ("03/30/2015 12:12:27 PM").
+    for fmt in ("%m/%d/%Y", "%m/%d/%Y %I:%M:%S %p"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except (ValueError, TypeError):
+            continue
+    return datetime.min
 
 
 def _parse_amount(raw: str | None) -> float:
@@ -163,6 +197,15 @@ def _parse_amount(raw: str | None) -> float:
         return float(raw)
     except ValueError:
         return 0.0
+
+
+def _parse_int(raw: str | None) -> int | None:
+    if not raw:
+        return None
+    try:
+        return int(float(raw))
+    except ValueError:
+        return None
 
 
 def _normalize_url(raw: str | None) -> str | None:

@@ -1,6 +1,8 @@
 """PE fund with its investment mandate (the match target)."""
 
-from sqlalchemy import Enum, Numeric, String, Text
+from datetime import date
+
+from sqlalchemy import Date, Enum, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,3 +44,15 @@ class Fund(UUIDMixin, TimestampMixin, Base):
         nullable=False,
     )
     mandate_confidence: Mapped[float | None] = mapped_column(Numeric(4, 3))
+
+    # --- Regulatory metadata (Form ADV / Form D — straight from the filing,
+    # not LLM-inferred; null for seed/manual/url_extracted funds) ---
+    fund_type_raw: Mapped[str | None] = mapped_column(String(128))
+    gross_asset_value_usd: Mapped[float | None] = mapped_column(Numeric(20, 2))
+    amount_raised_usd: Mapped[float | None] = mapped_column(Numeric(20, 2))
+    investor_count: Mapped[int | None] = mapped_column(Integer)
+    filing_date: Mapped[date | None] = mapped_column(Date)
+    auditor_name: Mapped[str | None] = mapped_column(String(512))
+    prime_broker_name: Mapped[str | None] = mapped_column(String(512))
+    custodian_name: Mapped[str | None] = mapped_column(String(512))
+    regulatory_id: Mapped[str | None] = mapped_column(String(128))

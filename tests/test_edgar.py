@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import textwrap
+from datetime import date
 from types import SimpleNamespace
 
 import httpx
@@ -45,6 +46,11 @@ def _write_form_d(tmp_path):
         "0001-A\tYES\t0001234567\tAcme Buyout Fund III, L.P.\tNY\tNEW YORK\n"
         "0003-C\tYES\t0007654321\tGlobal Growth Partners IV\tN4\tLUXEMBOURG\n"
     )
+    (tmp_path / "FORMDSUBMISSION.tsv").write_text(
+        "ACCESSIONNUMBER\tFILING_DATE\n"
+        "0001-A\t30-JUN-2026\n"
+        "0003-C\t15-MAR-2025\n"
+    )
     return tmp_path
 
 
@@ -60,6 +66,10 @@ def test_parse_form_d_filters_to_private_equity_and_joins_issuer(tmp_path):
     assert acme.country == "NEW YORK"
     assert acme.origin == "form_d"
     assert "CIK=1234567" in acme.source_url
+    assert acme.amount_raised_usd == 50_000_000.0
+    assert acme.fund_type_raw == "Private Equity Fund"
+    assert acme.regulatory_id == "1234567"
+    assert acme.filing_date == date(2026, 6, 30)
 
     # "Indefinite" offering amounts must not blow up float parsing.
     global_fund = next(c for c in candidates if "Global" in c.name)
@@ -111,11 +121,18 @@ def test_parse_form_adv_dedupes_by_fund_id_keeping_latest_filing(tmp_path):
     (tmp_path / "ERA_Schedule_D_7B1_test.csv").write_text(
         textwrap.dedent(
             """\
-            FilingID,"Fund Name","Fund ID",ReferenceID,State,Country,"Fund Type","Gross Asset Value"
-            100,"OLD FUND NAME",805-1,10,DE,United States,Private Equity Fund,1000000
-            200,"NEW FUND NAME",805-1,20,DE,United States,Private Equity Fund,2000000
+            FilingID,"Fund Name","Fund ID",ReferenceID,State,Country,"Fund Type","Gross Asset Value",Owners
+            100,"OLD FUND NAME",805-1,10,DE,United States,Private Equity Fund,1000000,3
+            200,"NEW FUND NAME",805-1,20,DE,United States,Private Equity Fund,2000000,7
             """
         )
+    )
+    (tmp_path / "ERA_Schedule_D_7B1A23_test.csv").write_text(
+        'FilingID,ReferenceID,"Name of Auditing Firm"\n200,20,"Ernst & Young"\n'
+    )
+    (tmp_path / "ERA_Schedule_D_7B1A24_test.csv").write_text(
+        'FilingID,ReferenceID,"Name of Prime Broker",Custodian\n'
+        '200,20,"Goldman Sachs & Co.",Y\n'
     )
     # No IA files present for this test — the parser should just skip them.
 
@@ -128,6 +145,14 @@ def test_parse_form_adv_dedupes_by_fund_id_keeping_latest_filing(tmp_path):
     assert fund.significance == 2_000_000.0
     assert fund.website_url == "https://newco-advisers.com"
     assert fund.source_url == "https://adviserinfo.sec.gov/firm/summary/1111"
+    assert fund.gross_asset_value_usd == 2_000_000.0
+    assert fund.investor_count == 7
+    assert fund.fund_type_raw == "Private Equity Fund"
+    assert fund.regulatory_id == "805-1"
+    assert fund.filing_date == date(2020, 1, 1)
+    assert fund.auditor_name == "Ernst & Young"
+    assert fund.prime_broker_name == "Goldman Sachs & Co."
+    assert fund.custodian_name == "Goldman Sachs & Co."
 
 
 def test_parse_form_adv_prefers_fund_website_over_adviser_website(tmp_path):
@@ -150,6 +175,55 @@ def test_parse_form_adv_prefers_fund_website_over_adviser_website(tmp_path):
     candidates = parse_form_adv(tmp_path)
 
     assert candidates[0].website_url == "https://fund-specific-site.com"
+
+
+def test_parse_form_adv_handles_registered_adviser_timestamped_dates(tmp_path):
+    # Registered-adviser (IA) filings append a timestamp to DateSubmitted;
+    # exempt-reporting-adviser (ERA) filings use a bare date. Both must parse.
+    _write_adv_base(
+        tmp_path / "IA_ADV_Base_A_test.csv",
+        [("100", "03/30/2015 12:12:27 PM", "ADVISER LLC", "5555")],
+    )
+    (tmp_path / "IA_Schedule_D_1I_test.csv").write_text("FilingID,Website\n")
+    (tmp_path / "IA_Schedule_D_7B1A28_websites_test.csv").write_text(
+        'FilingID,ReferenceID,SubreferenceID,"Website Address"\n'
+    )
+    (tmp_path / "IA_Schedule_D_7B1_test.csv").write_text(
+        textwrap.dedent(
+            """\
+            FilingID,"Fund Name","Fund ID",ReferenceID,State,Country,"Fund Type","Gross Asset Value"
+            100,"SOME FUND",805-1,10,DE,United States,Private Equity Fund,1000000
+            """
+        )
+    )
+
+    fund = parse_form_adv(tmp_path)[0]
+
+    assert fund.filing_date == date(2015, 3, 30)
+
+
+def test_parse_form_adv_custodian_name_absent_when_flag_is_no(tmp_path):
+    _write_adv_base(tmp_path / "ERA_ADV_Base_test.csv", [("100", "01/01/2020", "ADVISER LLC", "5555")])
+    (tmp_path / "ERA_Schedule_D_1I_test.csv").write_text("FilingID,Website\n")
+    (tmp_path / "ERA_Schedule_D_7B1A28_websites_test.csv").write_text(
+        'FilingID,ReferenceID,SubreferenceID,"Website Address"\n'
+    )
+    (tmp_path / "ERA_Schedule_D_7B1A24_test.csv").write_text(
+        'FilingID,ReferenceID,"Name of Prime Broker",Custodian\n100,10,"Some Broker",N\n'
+    )
+    (tmp_path / "ERA_Schedule_D_7B1_test.csv").write_text(
+        textwrap.dedent(
+            """\
+            FilingID,"Fund Name","Fund ID",ReferenceID,State,Country,"Fund Type","Gross Asset Value"
+            100,"SOME FUND",805-1,10,DE,United States,Private Equity Fund,1000000
+            """
+        )
+    )
+
+    fund = parse_form_adv(tmp_path)[0]
+
+    assert fund.prime_broker_name == "Some Broker"
+    assert fund.custodian_name is None
 
 
 def test_parse_form_adv_ignores_non_private_equity_fund_types(tmp_path):
@@ -222,6 +296,33 @@ def test_merge_candidates_keeps_most_significant_and_sorts_descending():
 
     assert [c.name for c in merged] == ["ACME FUND, L.P.", "Other Fund"]
     assert merged[0].firm == "Acme"
+
+
+def test_merge_candidates_combines_fields_from_both_sources_for_same_fund():
+    # The same fund surfaces from Form D (has amount_raised, filing_date) and
+    # Form ADV (has firm, auditor, investor_count) — merging must keep both
+    # sources' fields rather than discarding whichever loses on significance.
+    from_form_d = FundCandidate(
+        name="Acme Fund III, L.P.", firm=None, website_url=None, source_url="s1",
+        state=None, country=None, significance=50.0, origin="form_d",
+        amount_raised_usd=50.0, filing_date=date(2025, 1, 1),
+    )
+    from_form_adv = FundCandidate(
+        name="ACME FUND III, L.P.", firm="Acme Capital", website_url="https://acme.com",
+        source_url="s2", state=None, country=None, significance=500.0, origin="form_adv",
+        gross_asset_value_usd=500.0, investor_count=12, auditor_name="Ernst & Young",
+    )
+
+    merged = merge_candidates([from_form_d], [from_form_adv])
+
+    assert len(merged) == 1
+    fund = merged[0]
+    assert fund.firm == "Acme Capital"  # from Form ADV (the higher-significance base)
+    assert fund.amount_raised_usd == 50.0  # from Form D, filled in as a gap
+    assert fund.filing_date == date(2025, 1, 1)  # from Form D
+    assert fund.gross_asset_value_usd == 500.0  # from Form ADV
+    assert fund.investor_count == 12  # from Form ADV
+    assert fund.auditor_name == "Ernst & Young"  # from Form ADV
 
 
 # -- mandate inference ---------------------------------------------------------
