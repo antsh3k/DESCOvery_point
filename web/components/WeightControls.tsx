@@ -52,10 +52,6 @@ export function WeightControls({
           </label>
         ))}
       </div>
-      <p className="mt-2 text-xs text-slate-400">
-        Weights renormalise over the dimensions a fund actually has — a company
-        with no disclosed financials is never penalised for the gap.
-      </p>
     </div>
   );
 }
