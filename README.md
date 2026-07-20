@@ -1,13 +1,28 @@
 # DESCOvery_point
 
+_An AI tool that takes a company's **website URL** and returns a ranked
+shortlist of private-equity funds that would be good potential buyers._
+
+The pipeline runs in three separable, individually testable stages —
+**Company** (what are we selling?) → **Fund** (who could buy it?) →
+**Matching** (which buyers fit, and why?). For the full walkthrough with a
+worked example, see **[about.md](about.md)** (or the one-paragraph
+**[tldr_about.md](tldr_about.md)**).
+
+![DESCOvery Point landing page — paste a company URL, get a PE-buyer shortlist](docs/screenshots/home_page.png)
+
 ## Quickstart (Docker)
 
-Full stack — dashboard, API, and Postgres — in two commands. All you need is
+Full stack — dashboard, API, and Postgres — in a few commands. All you need is
 [Docker](https://docs.docker.com/get-docker/) and an LLM API key.
 
 ```bash
 cp .env.example .env         # then paste your ANTHROPIC_API_KEY into .env
 docker compose up --build    # first run auto-migrates the DB and seeds the funds
+
+# Optional but recommended — load the bundled full dataset (55k+ funds + demo
+# analyses) once the API is serving on :8000, in a second terminal:
+docker compose exec -T db psql -U descovery -d descovery_point < db/descovery_seed.sql
 ```
 
 Then open:
@@ -38,17 +53,28 @@ command-line interfaces, or any other method you prefer. The focus should be on
 functionality and effective use of the LLM API.
 
 
-## APP Decription 
-SME analytics and matching with the most suitable PE funds.
+## How it works
 
-Give the tool a company's **website URL**; it scrapes and analyses the site to
-extract key attributes (industry, location, size, product offerings) with an LLM,
-then produces a ranked **shortlist of private equity funds** that would be good
-potential buyers.
+The pipeline is **scrape → extract → store → match → rank**, in three stages:
 
-The pipeline is **scrape → extract → store → match → rank**: a FastAPI + async
-SQLAlchemy/Postgres backend, a Next.js dashboard (`web/`), and a Docker Compose
-stack that wires them together.
+1. **Company** — scrape the site (escalating to Claude's `web_fetch` only when a
+   page is thin or bot-walled), LLM-extract a structured profile (industry,
+   location, size, financials, ownership), then optionally enrich the gaps from
+   the web (LinkedIn, PitchBook, news). Enrichment runs as a background job, so
+   `POST /companies` returns immediately and the dashboard polls for progress.
+2. **Fund** — assemble the buyer universe from three provenances, each flagged
+   with its trust level: a curated seed, funds you add by URL, and real SEC
+   EDGAR filings.
+3. **Matching** — a 4-stage engine (deterministic geo/size gates → a free
+   size-fit score → an LLM mandate / strategy / value-creation judge → an LLM
+   re-rank + rationale) returns a ranked shortlist, each fund carrying a
+   cited source and a plain-language "why this fits."
+
+It's a FastAPI + async SQLAlchemy/Postgres (pgvector) backend, a Next.js
+dashboard (`web/`), and a Docker Compose stack that wires them together. Missing
+data is modelled as null — **never zero or a guess** — and scores guide rather
+than gatekeep, so the user always makes the final call. See
+**[about.md](about.md)** for the full design rationale.
 
 ## Prerequisites
 
@@ -69,10 +95,10 @@ For local (non-Docker) development you also need:
 
 This is the easiest way to try the app end to end.
 
-**1. Clone and enter the repo**
+**1. Unzip and enter the project**
 
 ```bash
-git clone <repo-url>
+unzip DESCOvery_point.zip
 cd DESCOvery_point
 ```
 
@@ -113,11 +139,25 @@ migrations and seeds the curated fund list:
 | `api` | http://localhost:8000 | FastAPI backend (interactive docs at http://localhost:8000/docs) |
 | `db`  | localhost:5432 | Postgres 16 + pgvector (data persisted in the `pgdata` volume) |
 
-The seed loads 16 curated funds — enough to demo immediately. To pull the full
-SEC EDGAR fund universe and turn on the semantic pre-filter, see
-[Loading fund data](#loading-fund-data).
+The seed loads 16 curated funds — enough to demo immediately.
 
-**5. Use it**
+**5. Load the full dataset (recommended)**
+
+This zip bundles a full database snapshot at `db/descovery_seed.sql` — **55k+
+real funds** (2,220 with semantic embeddings) plus a few pre-analyzed demo
+companies and their match results. Once the API is serving on :8000, load it in a
+second terminal:
+
+```bash
+docker compose exec -T db psql -U descovery -d descovery_point < db/descovery_seed.sql
+```
+
+It replaces the 16-fund starter seed with the complete set in one transaction, so
+you get the full fund universe without running EDGAR ingestion or paying for
+embeddings. (To rebuild the data yourself instead, see
+[Loading fund data](#loading-fund-data).)
+
+**6. Use it**
 
 Open **http://localhost:3000**, paste a company website URL, and run a match.
 The API docs at **http://localhost:8000/docs** let you drive the same pipeline
@@ -158,9 +198,26 @@ which fetches the page via Claude's server-side `web_fetch` tool using the
 
 ## Loading fund data
 
-The matcher ranks whatever funds are in the database. There are three ways to
-populate it, from quickest to most complete. (In Docker, run these with
-`docker compose exec api <command>`; locally, with `uv run <command>`.)
+The matcher ranks whatever funds are in the database. The quickest path is to
+load the **bundled database snapshot** (option 0); otherwise there are three ways
+to populate it from scratch, from quickest to most complete. (In Docker, run
+these with `docker compose exec api <command>`; locally, with `uv run <command>`.)
+
+**0. Bundled snapshot — the whole universe, instantly.** This zip ships a full
+database dump at `db/descovery_seed.sql` — **55k+ real funds** (2,220 with
+semantic embeddings) plus a few pre-analyzed demo companies and their match
+results, so you get the complete dataset without running EDGAR ingestion or
+paying for embeddings. Load it **after** the stack is up (the schema must exist
+first):
+
+```bash
+docker compose up --build            # wait until the API is serving on :8000
+docker compose exec -T db psql -U descovery -d descovery_point < db/descovery_seed.sql
+```
+
+The dump wipes the 16-fund auto-seed and replaces it with the full set (it runs
+in a single transaction, so a failure rolls back cleanly). That's all you need —
+the options below are only for rebuilding the data yourself.
 
 **1. Curated seed — automatic.** `docker compose up` seeds 16 hand-picked PE
 funds from `app/seed/funds_seed.json` on first run — enough to demo the pipeline
@@ -254,7 +311,9 @@ uv run pytest
   - `app/services/matching/embeddings.py` — pgvector semantic pre-filter (`backfill-embeddings`)
 - `web/` — Next.js dashboard
 - `alembic/` — database migrations (`0011` provisions the pgvector extension + column)
+- `db/descovery_seed.sql` — bundled full database snapshot (see [Loading fund data](#loading-fund-data), option 0)
 - `docker/entrypoint.sh` — waits for Postgres, migrates, seeds, then serves the API
+- `about.md` — full design walkthrough (Company → Fund → Matching) with a worked example; `tldr_about.md` is the one-paragraph version
 - `BUILD_PLAN.md` — milestone plan and status; read before feature work
 - `CLAUDE.md` — guidance for working in this repo
 

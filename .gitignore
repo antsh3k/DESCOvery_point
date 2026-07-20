@@ -224,3 +224,5 @@ __marimo__/
 data/edgar/
 
 BUILD_PLAN.md
+# Full DB snapshot shipped in the zip (large, re-creatable via ingest-edgar)
+db/*.sql
