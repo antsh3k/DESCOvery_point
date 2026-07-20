@@ -40,6 +40,8 @@ export const api = {
   listCompanies: (limit = 12) =>
     request<CompanyListItem[]>(`/companies?limit=${limit}`),
   getCompany: (id: string) => request<Company>(`/companies/${id}`),
+  refreshCompany: (id: string) =>
+    request<Company>(`/companies/${id}/refresh`, { method: "POST" }),
   matchCompany: (id: string) =>
     request<Match[]>(`/companies/${id}/match`, { method: "POST" }),
   getMatches: (id: string) => request<Match[]>(`/companies/${id}/matches`),

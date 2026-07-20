@@ -27,6 +27,17 @@ def normalize_url(url: str) -> str:
     return url
 
 
+def canonical_url_key(url: str) -> str:
+    """Collapse scheme/``www.``/trailing-slash/query variants of the same site
+    to one key, so ``acme.com``, ``https://www.acme.com/`` and
+    ``http://acme.com`` all identify the same cached company."""
+    parsed = urlparse(normalize_url(url.strip()))
+    netloc = parsed.netloc.lower()
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
+    return f"{netloc}{parsed.path.rstrip('/')}"
+
+
 def assert_public_http_url(url: str) -> None:
     """Raise :class:`UnsafeURLError` unless ``url`` is http(s) and every address
     its host resolves to is a public, routable IP.

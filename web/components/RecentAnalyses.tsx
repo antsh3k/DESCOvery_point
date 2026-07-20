@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/Badge";
 import { api } from "@/lib/api";
-import { statusTone } from "@/lib/format";
+import { statusTone, timeAgo } from "@/lib/format";
 import type { CompanyListItem } from "@/lib/types";
 
 export function RecentAnalyses() {
@@ -42,6 +42,9 @@ export function RecentAnalyses() {
             {c.industry && (
               <p className="mt-3 text-sm text-slate-600">{c.industry}</p>
             )}
+            <p className="mt-2 text-xs text-slate-400">
+              Updated {timeAgo(c.updated_at)}
+            </p>
           </Link>
         ))}
       </div>

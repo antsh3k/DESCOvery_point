@@ -2,7 +2,7 @@ import type { Company } from "@/lib/types";
 
 import { Badge } from "./Badge";
 import { SourceList } from "./SourceList";
-import { money, statusTone } from "@/lib/format";
+import { money, statusTone, timeAgo } from "@/lib/format";
 
 function StatCard({
   icon,
@@ -53,10 +53,14 @@ export function CompanySummary({
   company,
   analyzedWith,
   enriching,
+  onRefresh,
+  refreshing,
 }: {
   company: Company;
   analyzedWith?: string | null;
   enriching?: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
   const location =
     [company.location_region, company.location_country]
@@ -86,6 +90,9 @@ export function CompanySummary({
           >
             {company.url} ↗
           </a>
+          <p className="mt-1 text-xs text-slate-400">
+            Updated {timeAgo(company.updated_at)}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {enriching && (
@@ -98,6 +105,15 @@ export function CompanySummary({
             <Badge tone="slate">Analyzed with {analyzedWith}</Badge>
           )}
           <Badge tone={statusTone(company.status)}>{company.status}</Badge>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={refreshing}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-ink hover:border-accent hover:text-accent disabled:opacity-50"
+            >
+              {refreshing ? "Refreshing…" : "Refresh data"}
+            </button>
+          )}
         </div>
       </div>
 

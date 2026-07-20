@@ -26,6 +26,7 @@ export default function CompanyPage() {
   const [loading, setLoading] = useState(true);
   const [matching, setMatching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -89,6 +90,19 @@ export default function CompanyPage() {
       setError(err instanceof Error ? err.message : "Matching failed");
     } finally {
       setMatching(false);
+    }
+  }
+
+  async function refresh() {
+    setRefreshing(true);
+    setError(null);
+    try {
+      setCompany(await api.refreshCompany(id));
+      setMatches([]); // stale matches are cleared server-side on refresh
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Refresh failed");
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -163,6 +177,8 @@ export default function CompanyPage() {
           company={company}
           analyzedWith={provider}
           enriching={enriching}
+          onRefresh={refresh}
+          refreshing={refreshing}
         />
       )}
 

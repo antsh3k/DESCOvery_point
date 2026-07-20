@@ -48,6 +48,7 @@ export interface CompanyListItem {
   location_country: string | null;
   status: string;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Fund {

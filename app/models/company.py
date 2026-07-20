@@ -16,6 +16,9 @@ class Company(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "companies"
 
     url: Mapped[str] = mapped_column(String(2048), nullable=False, index=True)
+    # Canonicalized form of `url` (scheme/www./trailing-slash collapsed) used
+    # to look up an already-analyzed company instead of re-scraping it.
+    url_key: Mapped[str] = mapped_column(String(2048), nullable=False, unique=True, index=True)
     name: Mapped[str | None] = mapped_column(String(512))
     industry: Mapped[str | None] = mapped_column(String(256))
     sub_industry: Mapped[str | None] = mapped_column(String(256))

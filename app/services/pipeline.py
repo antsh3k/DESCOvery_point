@@ -27,6 +27,7 @@ from app.services.llm import LLMError, get_llm_client
 from app.services.matching import run_match
 from app.services.matching.score import DEFAULT_WEIGHTS
 from app.services.scraper import scrape_company
+from app.services.scraper.url_safety import canonical_url_key, normalize_url
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +39,28 @@ class ExtractionError(RuntimeError):
     """Raised when a company could not be scraped or extracted."""
 
 
-async def create_pending_company(
+async def get_or_create_company(
     url: str, session: AsyncSession, settings: Settings
-) -> Company:
-    """Create the shell row and return immediately. The heavy pipeline
-    (scrape → extract → enrich) runs in :func:`run_company_ingest` as a
-    background job; the client polls ``status`` / ``progress`` for updates."""
+) -> tuple[Company, bool]:
+    """Look up a company by its canonical URL first and reuse it instead of
+    re-scraping a site we've already analyzed. A previously failed attempt is
+    retried in place rather than left stuck. Returns ``(company, should_ingest)``
+    — the caller schedules :func:`run_company_ingest` only when ``True``."""
+    key = canonical_url_key(url)
+    existing = (
+        await session.execute(select(Company).where(Company.url_key == key))
+    ).scalar_one_or_none()
+
+    if existing is not None and existing.status != CompanyStatus.failed:
+        return await _get_with_sources(session, existing.id), False
+
+    if existing is not None:
+        await _requeue(existing, session, settings, "Retrying failed analysis")
+        return await _get_with_sources(session, existing.id), True
+
     company = Company(
-        url=url,
+        url=normalize_url(url),
+        url_key=key,
         status=CompanyStatus.pending,
         enrichment_status=(
             EnrichmentStatus.pending
@@ -56,7 +71,33 @@ async def create_pending_company(
     )
     session.add(company)
     await session.commit()
+    return await _get_with_sources(session, company.id), True
+
+
+async def refresh_company(
+    company: Company, session: AsyncSession, settings: Settings
+) -> Company:
+    """Re-queue an already-analyzed company for a fresh scrape → extract →
+    enrich pass, so stale data (a site update, a headcount change) can be
+    pulled in on manual request rather than only ever ingesting once."""
+    await _requeue(company, session, settings, "Refresh requested")
     return await _get_with_sources(session, company.id)
+
+
+async def _requeue(
+    company: Company, session: AsyncSession, settings: Settings, label: str
+) -> None:
+    company.status = CompanyStatus.pending
+    company.enrichment_status = (
+        EnrichmentStatus.pending
+        if enrichment_enabled(settings)
+        else EnrichmentStatus.skipped
+    )
+    company.progress = [*(company.progress or []), _event(label)]
+    # Old matches were scored against the profile this refresh is about to
+    # replace; clear them so the UI can't show a shortlist for stale data.
+    await session.execute(delete(Match).where(Match.company_id == company.id))
+    await session.commit()
 
 
 async def run_company_ingest(company_id: uuid.UUID, settings: Settings) -> None:
@@ -68,6 +109,10 @@ async def run_company_ingest(company_id: uuid.UUID, settings: Settings) -> None:
         if company is None:
             logger.warning("Ingest target %s no longer exists", company_id)
             return
+
+        # A no-op on a first-time ingest; clears stale rows from a prior pass
+        # when this is a refresh or a retry of a previously failed company.
+        await session.execute(delete(CompanySource).where(CompanySource.company_id == company.id))
 
         try:
             await _log(session, company, "Fetching website")

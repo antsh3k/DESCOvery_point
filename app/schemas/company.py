@@ -126,3 +126,4 @@ class CompanyListItem(BaseModel):
     location_country: str | None
     status: CompanyStatus
     created_at: datetime
+    updated_at: datetime
