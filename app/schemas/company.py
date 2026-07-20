@@ -108,6 +108,7 @@ class CompanyRead(BaseModel):
     extraction_confidence: dict | None
     status: CompanyStatus
     enrichment_status: EnrichmentStatus
+    progress: list
     sources: list[CompanySourceRead]
     created_at: datetime
     updated_at: datetime

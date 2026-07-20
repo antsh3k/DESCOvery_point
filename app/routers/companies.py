@@ -10,14 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.db import get_session
-from app.enums import EnrichmentStatus
 from app.models import Company
 from app.schemas.company import CompanyCreate, CompanyListItem, CompanyRead
-from app.services.pipeline import (
-    ExtractionError,
-    ingest_and_extract,
-    run_company_enrichment,
-)
+from app.services.pipeline import create_pending_company, run_company_ingest
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -29,16 +24,15 @@ async def create_company(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> Company:
-    try:
-        company = await ingest_and_extract(payload.url, session, settings)
-    except ExtractionError as exc:
+    """Return a shell company immediately; the scrape → extract → enrich
+    pipeline runs in the background. The client polls status / progress."""
+    url = payload.url.strip()
+    if not url:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
-        ) from exc
-    # Fire enrichment after the response is sent; the client polls the company
-    # until enrichment_status leaves 'pending'/'running'.
-    if company.enrichment_status == EnrichmentStatus.pending:
-        background.add_task(run_company_enrichment, company.id, settings)
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="URL is required"
+        )
+    company = await create_pending_company(url, session, settings)
+    background.add_task(run_company_ingest, company.id, settings)
     return company
 
 

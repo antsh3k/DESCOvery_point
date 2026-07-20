@@ -46,6 +46,8 @@ class Company(UUIDMixin, TimestampMixin, Base):
         default=EnrichmentStatus.pending,
         nullable=False,
     )
+    # Append-only activity log powering the live "processing" view.
+    progress: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
 
     sources: Mapped[list["CompanySource"]] = relationship(
         back_populates="company",

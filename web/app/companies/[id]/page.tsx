@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { ActivityFeed } from "@/components/ActivityFeed";
 import { CompanySummary } from "@/components/CompanySummary";
 import { MatchCard } from "@/components/MatchCard";
 import { WeightControls } from "@/components/WeightControls";
@@ -59,21 +60,25 @@ export default function CompanyPage() {
     };
   }, [id]);
 
-  // Enrichment runs as a background job; poll until it settles, then stop.
+  // The whole pipeline runs in the background; poll while it's working.
+  const failed = company?.status === "failed";
+  const extracting =
+    company?.status === "pending" || company?.status === "scraped";
   const enriching =
     company?.enrichment_status === "pending" ||
     company?.enrichment_status === "running";
+  const active = !failed && (extracting || enriching);
   useEffect(() => {
-    if (!enriching) return;
+    if (!active) return;
     const timer = setInterval(async () => {
       try {
         setCompany(await api.getCompany(id));
       } catch {
         /* transient — keep the last good state and retry next tick */
       }
-    }, 4000);
+    }, 1500);
     return () => clearInterval(timer);
-  }, [enriching, id]);
+  }, [active, id]);
 
   async function runMatch() {
     setMatching(true);
@@ -131,66 +136,103 @@ export default function CompanyPage() {
         ← Back to analyze
       </Link>
 
-      <CompanySummary
-        company={company}
-        analyzedWith={provider}
-        enriching={enriching}
-      />
-
-      <WeightControls
-        weights={weights}
-        onChange={setWeights}
-        onSave={saveWeights}
-        saving={saving}
-      />
-
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">
-          Fund shortlist{" "}
-          {ranked.length > 0 && (
-            <span className="text-slate-400">({ranked.length})</span>
-          )}
-        </h2>
-        <button
-          onClick={runMatch}
-          disabled={matching}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {matching
-            ? "Matching…"
-            : ranked.length > 0
-              ? "Re-run matching"
-              : "Run matching"}
-        </button>
-      </div>
-
-      {error && company && (
-        <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
-          {error}
-        </p>
+      {failed ? (
+        <section className="rounded-xl border border-red-200 bg-red-50 p-6">
+          <h1 className="text-lg font-semibold text-red-800">
+            Couldn’t analyze {company.url}
+          </h1>
+          <p className="mt-1 text-sm text-red-700">
+            The site couldn’t be fetched or read. Check the URL and try again.
+          </p>
+          <div className="mt-4">
+            <ActivityFeed progress={company.progress} active={false} failed />
+          </div>
+        </section>
+      ) : extracting ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
+            <h1 className="text-lg font-semibold text-ink">
+              Analyzing {company.name ?? company.url}
+            </h1>
+          </div>
+          <ActivityFeed progress={company.progress} active />
+        </section>
+      ) : (
+        <CompanySummary
+          company={company}
+          analyzedWith={provider}
+          enriching={enriching}
+        />
       )}
 
-      {ranked.length === 0 ? (
-        <p className="text-slate-500">
-          No matches yet. Run matching to score this company against the fund
-          universe.
-        </p>
-      ) : (
-        <div className="space-y-4">
-          {ranked.map(({ match, composite }, i) => {
-            const fund = funds[match.fund_id];
-            if (!fund) return null;
-            return (
-              <MatchCard
-                key={match.id}
-                fund={fund}
-                match={match}
-                composite={composite}
-                rank={i + 1}
-              />
-            );
-          })}
-        </div>
+      {enriching && !extracting && (
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Gathering supplemental firmographics
+          </p>
+          <ActivityFeed progress={company.progress} active />
+        </section>
+      )}
+
+      {!extracting && !failed && (
+        <>
+          <WeightControls
+            weights={weights}
+            onChange={setWeights}
+            onSave={saveWeights}
+            saving={saving}
+          />
+
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">
+              Fund shortlist{" "}
+              {ranked.length > 0 && (
+                <span className="text-slate-400">({ranked.length})</span>
+              )}
+            </h2>
+            <button
+              onClick={runMatch}
+              disabled={matching}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {matching
+                ? "Matching…"
+                : ranked.length > 0
+                  ? "Re-run matching"
+                  : "Run matching"}
+            </button>
+          </div>
+
+          {error && (
+            <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
+              {error}
+            </p>
+          )}
+
+          {ranked.length === 0 ? (
+            <p className="text-slate-500">
+              No matches yet. Run matching to score this company against the
+              fund universe.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {ranked.map(({ match, composite }, i) => {
+                const fund = funds[match.fund_id];
+                if (!fund) return null;
+                return (
+                  <MatchCard
+                    key={match.id}
+                    fund={fund}
+                    match={match}
+                    composite={composite}
+                    rank={i + 1}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

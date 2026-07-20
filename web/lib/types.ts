@@ -8,6 +8,12 @@ export interface CompanySource {
   snippet: string | null;
 }
 
+export interface ProgressEvent {
+  label: string;
+  detail: string | null;
+  at: string;
+}
+
 export interface Company {
   id: string;
   url: string;
@@ -28,6 +34,7 @@ export interface Company {
   extraction_confidence: Record<string, number> | null;
   status: string;
   enrichment_status: string;
+  progress: ProgressEvent[];
   sources: CompanySource[];
   created_at: string;
   updated_at: string;

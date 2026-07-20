@@ -38,42 +38,112 @@ class ExtractionError(RuntimeError):
     """Raised when a company could not be scraped or extracted."""
 
 
-async def ingest_and_extract(
+async def create_pending_company(
     url: str, session: AsyncSession, settings: Settings
 ) -> Company:
-    company = Company(url=url, status=CompanyStatus.pending)
-    session.add(company)
-    await session.flush()
-
-    scrape = await scrape_company(url, max_pages=settings.scrape_max_pages)
-    if not scrape.pages:
-        company.status = CompanyStatus.failed
-        await session.commit()
-        raise ExtractionError(f"Could not fetch any pages from {url}")
-    company.status = CompanyStatus.scraped
-
-    try:
-        llm = get_llm_client(settings)
-        profile = await run_in_threadpool(extract_company_profile, scrape, llm)
-    except LLMError as exc:
-        company.status = CompanyStatus.failed
-        await session.commit()
-        raise ExtractionError(str(exc)) from exc
-
-    _apply_profile(company, profile)
-    _attach_sources(session, company, scrape)
-    company.status = CompanyStatus.extracted
-    # Enrichment (web search) runs as a background job so the request returns
-    # fast; see run_company_enrichment. Mark it queued, or skipped if disabled.
-    company.enrichment_status = (
-        EnrichmentStatus.pending
-        if enrichment_enabled(settings)
-        else EnrichmentStatus.skipped
+    """Create the shell row and return immediately. The heavy pipeline
+    (scrape → extract → enrich) runs in :func:`run_company_ingest` as a
+    background job; the client polls ``status`` / ``progress`` for updates."""
+    company = Company(
+        url=url,
+        status=CompanyStatus.pending,
+        enrichment_status=(
+            EnrichmentStatus.pending
+            if enrichment_enabled(settings)
+            else EnrichmentStatus.skipped
+        ),
+        progress=[_event("Queued for analysis")],
     )
+    session.add(company)
     await session.commit()
-    # Re-load with sources eagerly populated so response serialization does
-    # not emit a lazy-load on the async session.
     return await _get_with_sources(session, company.id)
+
+
+async def run_company_ingest(company_id: uuid.UUID, settings: Settings) -> None:
+    """Background job: run the full scrape → extract → enrich pipeline on its
+    own session, recording each stage in ``progress`` so the UI can render live
+    activity. Never raises — failures land on ``status`` / ``enrichment_status``."""
+    async with SessionLocal() as session:
+        company = await session.get(Company, company_id)
+        if company is None:
+            logger.warning("Ingest target %s no longer exists", company_id)
+            return
+
+        try:
+            await _log(session, company, "Fetching website")
+            scrape = await scrape_company(company.url, max_pages=settings.scrape_max_pages)
+            if not scrape.pages:
+                company.status = CompanyStatus.failed
+                company.enrichment_status = EnrichmentStatus.skipped
+                await _log(session, company, "Could not fetch any pages from the site")
+                return
+
+            methods = sorted({p.method.value for p in scrape.pages})
+            company.status = CompanyStatus.scraped
+            await _log(
+                session, company,
+                f"Read {len(scrape.pages)} page(s)", detail=f"via {', '.join(methods)}",
+            )
+
+            await _log(session, company, "Extracting company profile with the LLM")
+            llm = get_llm_client(settings)
+            profile = await run_in_threadpool(extract_company_profile, scrape, llm)
+            _apply_profile(company, profile)
+            _attach_sources(session, company, scrape)
+            company.status = CompanyStatus.extracted
+            await _log(session, company, "Profile extracted", detail=profile.name)
+        except Exception:  # noqa: BLE001 - a failed job must not tear the row
+            logger.exception("Ingest failed for %s", company_id)
+            await session.rollback()
+            company = await session.get(Company, company_id)
+            if company is not None:
+                company.status = CompanyStatus.failed
+                company.enrichment_status = EnrichmentStatus.skipped
+                await _log(session, company, "Analysis failed")
+            return
+
+        if enrichment_enabled(settings):
+            await _enrich_in_session(session, company, settings)
+
+
+async def _enrich_in_session(
+    session: AsyncSession, company: Company, settings: Settings
+) -> None:
+    """Search the web for supplemental firmographics and fold them in. Assumes
+    the company is already ``extracted``; records its own progress + status."""
+    company.enrichment_status = EnrichmentStatus.running
+    await _log(
+        session, company,
+        "Searching the web for firmographics",
+        detail="LinkedIn, PitchBook, Crunchbase, news",
+    )
+    try:
+        profile = company_to_profile(company)
+        enrichment = await enrich_company(
+            profile,
+            company.url,
+            api_key=settings.anthropic_api_key,
+            model=settings.anthropic_model,
+        )
+        if enrichment is not None:
+            merged = merge_enrichment(profile, enrichment)
+            _apply_enrichment_fields(company, merged)
+            _attach_search_sources(session, company, enrichment.sources)
+            company.enrichment_status = EnrichmentStatus.done
+            await _log(
+                session, company,
+                "Enrichment complete", detail=_enrichment_summary(enrichment),
+            )
+        else:
+            company.enrichment_status = EnrichmentStatus.done
+            await _log(session, company, "No supplemental data found")
+    except Exception:  # noqa: BLE001
+        logger.exception("Enrichment failed for %s", company.id)
+        await session.rollback()
+        company = await session.get(Company, company.id)
+        if company is not None:
+            company.enrichment_status = EnrichmentStatus.failed
+            await _log(session, company, "Enrichment failed")
 
 
 async def run_company_match(
@@ -157,41 +227,17 @@ def enrichment_enabled(settings: Settings) -> bool:
     return settings.enrich_source.lower() == "claude"
 
 
-async def run_company_enrichment(company_id: uuid.UUID, settings: Settings) -> None:
-    """Background job: search the web for supplemental firmographics and fold
-    them into an already-extracted company. Runs on its own session (the
-    request's session is long gone by the time this fires) and never raises —
-    failures are recorded on ``enrichment_status``."""
-    async with SessionLocal() as session:
-        company = await session.get(Company, company_id)
-        if company is None:
-            logger.warning("Enrichment target %s no longer exists", company_id)
-            return
-
-        company.enrichment_status = EnrichmentStatus.running
-        await session.commit()
-
-        try:
-            profile = company_to_profile(company)
-            enrichment = await enrich_company(
-                profile,
-                company.url,
-                api_key=settings.anthropic_api_key,
-                model=settings.anthropic_model,
-            )
-            if enrichment is not None:
-                merged = merge_enrichment(profile, enrichment)
-                _apply_enrichment_fields(company, merged)
-                _attach_search_sources(session, company, enrichment.sources)
-            company.enrichment_status = EnrichmentStatus.done
-            await session.commit()
-        except Exception:  # noqa: BLE001 - a failed job must not leave a torn state
-            logger.exception("Enrichment job failed for %s", company_id)
-            await session.rollback()
-            company = await session.get(Company, company_id)
-            if company is not None:
-                company.enrichment_status = EnrichmentStatus.failed
-                await session.commit()
+def _enrichment_summary(enrichment: CompanyEnrichment) -> str | None:
+    bits: list[str] = []
+    if enrichment.investors:
+        bits.append(f"{len(enrichment.investors)} investor(s)")
+    if enrichment.competitors:
+        bits.append(f"{len(enrichment.competitors)} competitor(s)")
+    if enrichment.revenue_estimate_usd_m is not None:
+        bits.append(f"~${enrichment.revenue_estimate_usd_m:g}M revenue")
+    if enrichment.size_employees is not None:
+        bits.append(f"{enrichment.size_employees} employees")
+    return ", ".join(bits) or None
 
 
 def merge_enrichment(
@@ -302,6 +348,23 @@ def _attach_search_sources(
         for source in sources
         if source.url
     )
+
+
+def _event(label: str, detail: str | None = None) -> dict:
+    return {
+        "label": label,
+        "detail": detail,
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def _log(
+    session: AsyncSession, company: Company, label: str, detail: str | None = None
+) -> None:
+    """Append an activity entry and commit so pollers see it promptly.
+    Reassigns the list (rather than mutating) so SQLAlchemy flags it dirty."""
+    company.progress = [*(company.progress or []), _event(label, detail)]
+    await session.commit()
 
 
 def _f(value) -> float | None:
