@@ -1,15 +1,26 @@
-"""Stage 1 — hard filter on geography (sector is scored, not gated).
+"""Stage 1 — hard filters on geography and gross size mismatch.
 
 Filters are deliberately *forgiving*: an unknown company attribute or an
 unconstrained fund is treated as "no constraint" (pass), never as a failure —
-we don't want thin SME data to wipe out the whole shortlist. Only a clear
-geography mismatch excludes a fund; sector fit is assessed downstream by the LLM
-thesis judge rather than a brittle string match here.
+we don't want thin SME data to wipe out the whole shortlist. Two things gate:
+
+* a clear **geography** mismatch, and
+* a **gross size** mismatch — a *disclosed* company metric more than an order of
+  magnitude outside the fund's published band, on *every* axis we can assess.
+
+Sector and transactability (does ownership allow this fund's deal type?) are
+judged semantically downstream by the LLM rather than by brittle string matching
+here: sector taxonomies and free-text stage/ownership rarely align on a
+substring, so gating on them would wrongly wipe out otherwise-plausible funds.
 """
 
 from __future__ import annotations
 
 _GEO_WILDCARDS = {"global", "any", "worldwide", "international"}
+
+# A disclosed metric this many multiples beyond a band edge is a gross mismatch.
+# Deliberately large so only unmistakable misses gate; soft misses are scored.
+_GROSS_SIZE_FACTOR = 10.0
 
 
 def _tokens(*values: object) -> list[str]:
@@ -50,17 +61,58 @@ def geo_ok(company, fund) -> bool | None:
     return _overlap(company_geos, fund_geos)
 
 
+def _grossly_out(value, lo, hi) -> bool | None:
+    """True if ``value`` is > _GROSS_SIZE_FACTOR beyond the band; None if not assessable."""
+    if value is None or (lo is None and hi is None):
+        return None
+    value = float(value)
+    lo = float(lo) if lo is not None else None
+    hi = float(hi) if hi is not None else None
+    if lo is not None and lo > 0 and value < lo / _GROSS_SIZE_FACTOR:
+        return True
+    if hi is not None and hi > 0 and value > hi * _GROSS_SIZE_FACTOR:
+        return True
+    return False
+
+
+def size_ok(company, fund) -> bool | None:
+    """False only when *every* disclosed size metric is grossly outside the band.
+
+    Uses disclosed EBITDA/revenue only — never the coarse implied enterprise
+    value used for soft scoring — so exclusion always rests on a hard number vs a
+    hard band. Unanimity across assessable axes keeps one noisy metric from
+    gating. None when nothing is assessable (=> pass).
+    """
+    checks = [
+        _grossly_out(
+            getattr(company, "ebitda_estimate_usd_m", None),
+            fund.ebitda_min_usd_m,
+            fund.ebitda_max_usd_m,
+        ),
+        _grossly_out(
+            getattr(company, "revenue_estimate_usd_m", None),
+            fund.revenue_min_usd_m,
+            fund.revenue_max_usd_m,
+        ),
+    ]
+    assessed = [c for c in checks if c is not None]
+    if not assessed:
+        return None
+    return not all(assessed)
+
+
 def passes_hard_filters(company, fund) -> tuple[bool, dict]:
     """Return (passed, matched_on).
 
-    Only geography is a hard gate — a clear geo mismatch excludes a fund. Sector
-    overlap is *informational only* (surfaced in ``matched_on`` for the UI and the
-    LLM thesis judge): sector taxonomies rarely align on a substring
-    (``"Apparel & Fashion"`` vs a fund's ``"Consumer"``), so letting sector fail the
-    gate would wrongly wipe out otherwise-plausible funds. Whether the thesis
-    actually fits is left to Stage 3's LLM judge.
+    Geography and gross size are hard gates — a clear miss on either excludes a
+    fund. Sector overlap is *informational only* (surfaced in ``matched_on`` for
+    the UI and the LLM judge): sector taxonomies rarely align on a substring
+    (``"Apparel & Fashion"`` vs a fund's ``"Consumer"``), so letting sector fail
+    the gate would wrongly wipe out otherwise-plausible funds. Whether the thesis
+    and deal type actually fit is left to Stage 3's LLM judge.
     """
     s = sector_ok(company, fund)
     g = geo_ok(company, fund)
-    passed = g is not False
-    return passed, {"sector": s, "geo": g}
+    size = size_ok(company, fund)
+    passed = g is not False and size is not False
+    return passed, {"sector": s, "geo": g, "size": size}

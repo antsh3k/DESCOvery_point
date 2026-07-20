@@ -3,9 +3,9 @@
 import type { Weights } from "@/lib/score";
 
 const LABELS: Record<keyof Weights, string> = {
-  thesis: "Thesis",
-  numeric: "Numeric",
+  mandate: "Mandate",
   strategy: "Strategy",
+  value_creation: "Value creation",
 };
 
 export function WeightControls({

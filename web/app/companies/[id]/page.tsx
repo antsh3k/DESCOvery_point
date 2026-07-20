@@ -12,7 +12,11 @@ import { api } from "@/lib/api";
 import { compose, type Weights } from "@/lib/score";
 import type { Company, Fund, Match } from "@/lib/types";
 
-const DEFAULT_WEIGHTS: Weights = { thesis: 0.4, numeric: 0.35, strategy: 0.25 };
+const DEFAULT_WEIGHTS: Weights = {
+  mandate: 0.4,
+  strategy: 0.35,
+  value_creation: 0.25,
+};
 
 export default function CompanyPage() {
   const params = useParams<{ id: string }>();
@@ -43,9 +47,9 @@ export default function CompanyPage() {
         setFunds(Object.fromEntries(fundList.map((f) => [f.id, f])));
         setMatches(existing);
         setWeights({
-          thesis: settings.weight_thesis,
-          numeric: settings.weight_numeric,
+          mandate: settings.weight_mandate,
           strategy: settings.weight_strategy,
+          value_creation: settings.weight_value_creation,
         });
       } catch (err) {
         if (active)
@@ -108,9 +112,9 @@ export default function CompanyPage() {
     setSaving(true);
     try {
       await api.updateSettings({
-        weight_thesis: weights.thesis,
-        weight_numeric: weights.numeric,
+        weight_mandate: weights.mandate,
         weight_strategy: weights.strategy,
+        weight_value_creation: weights.value_creation,
       });
     } finally {
       setSaving(false);
@@ -124,9 +128,9 @@ export default function CompanyPage() {
         match: m,
         composite: compose(
           {
-            thesis: m.thesis_score,
-            numeric: m.numeric_score,
+            mandate: m.mandate_score,
             strategy: m.strategy_score,
+            value_creation: m.value_creation_score,
           },
           weights,
         ).composite,

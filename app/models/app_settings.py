@@ -10,9 +10,9 @@ from app.models.mixins import TimestampMixin, UUIDMixin
 class AppSettings(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "settings"
 
-    weight_thesis: Mapped[float] = mapped_column(Numeric(4, 3), default=0.40)
-    weight_numeric: Mapped[float] = mapped_column(Numeric(4, 3), default=0.35)
-    weight_strategy: Mapped[float] = mapped_column(Numeric(4, 3), default=0.25)
+    weight_mandate: Mapped[float] = mapped_column(Numeric(4, 3), default=0.40)
+    weight_strategy: Mapped[float] = mapped_column(Numeric(4, 3), default=0.35)
+    weight_value_creation: Mapped[float] = mapped_column(Numeric(4, 3), default=0.25)
 
     llm_provider: Mapped[str] = mapped_column(String(32), default="anthropic")
     llm_model: Mapped[str | None] = mapped_column(String(128))

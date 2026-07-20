@@ -1,4 +1,4 @@
-"""Four-stage matching engine: filters → numeric → thesis judge → re-rank."""
+"""Four-stage matching engine: filters → size fit → fit judge → re-rank."""
 
 from app.services.matching.engine import MatchResult, run_match
 from app.services.matching.score import DEFAULT_WEIGHTS, compose

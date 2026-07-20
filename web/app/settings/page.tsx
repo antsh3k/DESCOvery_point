@@ -29,9 +29,9 @@ export default function SettingsPage() {
     setError(null);
     try {
       const updated = await api.updateSettings({
-        weight_thesis: settings.weight_thesis,
-        weight_numeric: settings.weight_numeric,
+        weight_mandate: settings.weight_mandate,
         weight_strategy: settings.weight_strategy,
+        weight_value_creation: settings.weight_value_creation,
         llm_provider: settings.llm_provider,
         llm_model: settings.llm_model,
         scrape_max_pages: settings.scrape_max_pages,
@@ -59,22 +59,24 @@ export default function SettingsPage() {
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="mb-3 text-sm font-semibold">Scoring weights</h2>
         <div className="grid grid-cols-3 gap-3">
-          {(["weight_thesis", "weight_numeric", "weight_strategy"] as const).map(
-            (key) => (
-              <div key={key}>
-                <label className={label}>{key.replace("weight_", "")}</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={settings[key]}
-                  onChange={(e) => set(key, Number(e.target.value))}
-                  className={input}
-                />
-              </div>
-            ),
-          )}
+          {(
+            ["weight_mandate", "weight_strategy", "weight_value_creation"] as const
+          ).map((key) => (
+            <div key={key}>
+              <label className={label}>
+                {key.replace("weight_", "").replace("_", " ")}
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={settings[key]}
+                onChange={(e) => set(key, Number(e.target.value))}
+                className={input}
+              />
+            </div>
+          ))}
         </div>
         <p className="mt-3 text-xs text-slate-500">
           These are the saved defaults. Weights are relative and renormalise over

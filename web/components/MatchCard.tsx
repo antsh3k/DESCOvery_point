@@ -89,9 +89,9 @@ export function MatchCard({
       )}
 
       <div className="my-4 grid gap-3 sm:grid-cols-3">
-        <ScoreBar label="Thesis" value={match.thesis_score} />
-        <ScoreBar label="Numeric" value={match.numeric_score} />
+        <ScoreBar label="Mandate" value={match.mandate_score} />
         <ScoreBar label="Strategy" value={match.strategy_score} />
+        <ScoreBar label="Value creation" value={match.value_creation_score} />
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">

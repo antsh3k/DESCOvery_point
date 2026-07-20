@@ -22,9 +22,9 @@ class Match(UUIDMixin, TimestampMixin, Base):
     run_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
 
     passed_hard_filters: Mapped[bool] = mapped_column(Boolean, default=False)
-    numeric_score: Mapped[float | None] = mapped_column(Numeric(6, 2))
-    thesis_score: Mapped[float | None] = mapped_column(Numeric(6, 2))
+    mandate_score: Mapped[float | None] = mapped_column(Numeric(6, 2))
     strategy_score: Mapped[float | None] = mapped_column(Numeric(6, 2))
+    value_creation_score: Mapped[float | None] = mapped_column(Numeric(6, 2))
     composite_score: Mapped[float | None] = mapped_column(Numeric(6, 2))
 
     matched_on: Mapped[dict | None] = mapped_column(JSONB)

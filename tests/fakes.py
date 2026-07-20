@@ -6,7 +6,7 @@ import uuid
 from types import SimpleNamespace
 
 from app.schemas.company import CompanyProfile
-from app.schemas.match import RerankItem, RerankResult, ThesisJudgment
+from app.schemas.match import FitJudgment, RerankItem, RerankResult
 from app.services.llm.base import LLMClient
 
 
@@ -16,15 +16,16 @@ class FakeLLM(LLMClient):
     def _raw_complete(self, *, system: str, user: str) -> str:  # pragma: no cover
         raise NotImplementedError("FakeLLM overrides high-level methods")
 
-    def judge_thesis(self, *, company: CompanyProfile, fund: dict) -> ThesisJudgment:
+    def judge_fit(self, *, company: CompanyProfile, fund: dict) -> FitJudgment:
         sectors = " ".join(fund.get("sectors", [])).lower()
         base = 90.0 if "software" in sectors else 50.0
         # A healthcare-only fund is a clear mismatch for the software companies
         # these tests use — exercise the plausibility exclusion path.
         plausible = "healthcare" not in sectors or "software" in sectors
-        return ThesisJudgment(
-            thesis_score=base,
-            strategy_score=base - 10,
+        return FitJudgment(
+            mandate_fit=base,
+            strategy_fit=base - 10,
+            value_creation_fit=base - 20,
             justification=f"Fit assessment for {fund['name']}",
             plausible_fit=plausible,
         )

@@ -26,6 +26,8 @@ async def test_run_match_filters_scores_and_reranks():
         ebitda_max_usd_m=None,
         revenue_min_usd_m=None,
         revenue_max_usd_m=None,
+        check_size_min_usd_m=None,
+        check_size_max_usd_m=None,
     )
     mismatch = make_fund(name="HC US", sectors=["Healthcare"], geographies=["US"])
 
@@ -43,9 +45,11 @@ async def test_run_match_filters_scores_and_reranks():
         assert r.composite_score is not None
         assert r.rationale.startswith("Why")  # supplied by rerank
 
-    # Fund with no financials still scores (thesis+strategy only) — not penalised.
-    assert by_id[str(no_financials.id)].numeric_score is None
-    assert by_id[str(no_financials.id)].composite_score is not None
+    # Fund with no size bands still scores — mandate falls back to the LLM's
+    # sector-centrality judgment, so the gap never penalises it.
+    nf = by_id[str(no_financials.id)]
+    assert nf.mandate_score == 90.0  # size missing → mandate = LLM mandate_fit
+    assert nf.composite_score is not None
 
 
 async def test_clear_sector_mismatch_is_excluded_even_when_geo_passes():
@@ -70,11 +74,12 @@ async def test_clear_sector_mismatch_is_excluded_even_when_geo_passes():
     assert sw.rank == 1
 
 
-async def test_run_match_without_llm_is_numeric_only():
+async def test_run_match_without_llm_is_size_only():
     good = make_fund(name="Good", sectors=["Software"], geographies=["UK"])
     results = await run_match(_company(), [good], weights=DEFAULT_WEIGHTS, llm=None)
     r = results[0]
-    assert r.thesis_score is None
-    assert r.numeric_score == 100.0
+    assert r.strategy_score is None
+    assert r.value_creation_score is None
+    assert r.mandate_score == 100.0  # deterministic size fit only
     assert r.composite_score == 100.0
     assert r.rank == 1

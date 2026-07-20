@@ -80,9 +80,9 @@ export interface Match {
   fund_id: string;
   run_id: string;
   passed_hard_filters: boolean;
-  numeric_score: number | null;
-  thesis_score: number | null;
+  mandate_score: number | null;
   strategy_score: number | null;
+  value_creation_score: number | null;
   composite_score: number | null;
   matched_on: Record<string, unknown> | null;
   rationale: string | null;
@@ -92,9 +92,9 @@ export interface Match {
 
 export interface Settings {
   id: string;
-  weight_thesis: number;
-  weight_numeric: number;
+  weight_mandate: number;
   weight_strategy: number;
+  weight_value_creation: number;
   llm_provider: string;
   llm_model: string | null;
   scrape_max_pages: number;

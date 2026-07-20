@@ -220,9 +220,9 @@ async def run_company_match(
             fund_id=uuid.UUID(r.fund_id),
             run_id=run_id,
             passed_hard_filters=r.passed_hard_filters,
-            numeric_score=r.numeric_score,
-            thesis_score=r.thesis_score,
+            mandate_score=r.mandate_score,
             strategy_score=r.strategy_score,
+            value_creation_score=r.value_creation_score,
             composite_score=r.composite_score,
             matched_on=r.matched_on,
             rationale=r.rationale,
@@ -270,9 +270,10 @@ async def get_or_create_settings(session: AsyncSession) -> AppSettings:
 
 def weights_from_settings(row: AppSettings) -> dict[str, float]:
     return {
-        "thesis": _f(row.weight_thesis) or DEFAULT_WEIGHTS["thesis"],
-        "numeric": _f(row.weight_numeric) or DEFAULT_WEIGHTS["numeric"],
+        "mandate": _f(row.weight_mandate) or DEFAULT_WEIGHTS["mandate"],
         "strategy": _f(row.weight_strategy) or DEFAULT_WEIGHTS["strategy"],
+        "value_creation": _f(row.weight_value_creation)
+        or DEFAULT_WEIGHTS["value_creation"],
     }
 
 
@@ -334,7 +335,7 @@ def _maybe_llm(settings: Settings):
     try:
         return get_llm_client(settings)
     except LLMError as exc:
-        logger.info("matching without LLM (%s); numeric-only ranking", exc)
+        logger.info("matching without LLM (%s); size-fit-only ranking", exc)
         return None
 
 

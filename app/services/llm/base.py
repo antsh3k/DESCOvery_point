@@ -17,7 +17,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.schemas.company import CompanyProfile
 from app.schemas.fund import FundMandate
-from app.schemas.match import RerankResult, ThesisJudgment
+from app.schemas.match import FitJudgment, RerankResult
 
 logger = logging.getLogger(__name__)
 
@@ -78,27 +78,34 @@ class LLMClient(ABC):
         user = f"Source URL: {source_url}\n\nWebsite text:\n\"\"\"\n{text}\n\"\"\""
         return self._complete_schema(system=system, user=user, schema=FundMandate)
 
-    def judge_thesis(
-        self, *, company: CompanyProfile, fund: dict
-    ) -> ThesisJudgment:
+    def judge_fit(self, *, company: CompanyProfile, fund: dict) -> FitJudgment:
         system = (
-            "You judge how well a target company fits a PE fund. Score 0-100 on two "
-            "axes: `thesis_score` (does the business match what the fund is trying to "
-            "build?) and `strategy_score` (buy-and-build / add-on / operational fit). "
+            "You judge how well a target company fits a PE fund, scoring 0-100 on "
+            "three independent axes:\n"
+            "- `mandate_fit`: how central the company's sector/business is to what "
+            "the fund invests in — core to the thesis (high) vs merely adjacent "
+            "(low). Judge sector on meaning, not exact wording ('Apparel' and "
+            "'Consumer' are a fit).\n"
+            "- `strategy_fit`: how well the company's DEAL SITUATION matches the "
+            "fund's playbook — use the company's `ownership_status`, `deal_stage`, "
+            "and `growth_trajectory`. Founder-owned nearing succession suits a "
+            "buyout; a fast-growing VC-backed company suits growth equity, not a "
+            "control buyout; a distressed business suits a turnaround fund.\n"
+            "- `value_creation_fit`: how well the fund's capabilities serve THIS "
+            "company's needs — buy-and-build capital for a fragmented market, "
+            "professionalising a founder-run business, sector operating expertise.\n"
             "Give a one-to-two sentence justification. Also set `plausible_fit`: "
-            "false when the fund is a CLEAR mismatch that should be excluded from the "
-            "shortlist entirely — for example the company's sector is plainly outside "
-            "the fund's stated mandate (a healthcare-only fund vs. a horizontal SaaS "
-            "product), or the fund could not credibly be a buyer. Set it true whenever "
-            "the fund is at least a plausible potential buyer worth showing the user. "
-            "Judge sector fit on meaning, not exact wording — related sectors "
-            "('Apparel' and 'Consumer') are a fit, not a mismatch."
+            "false when the fund is a CLEAR mismatch to exclude entirely — the "
+            "company's sector is plainly outside the fund's mandate (a "
+            "healthcare-only fund vs. a horizontal SaaS product), or ownership makes "
+            "the fund's deal type impossible. Set it true whenever the fund is at "
+            "least a plausible potential buyer worth showing the user."
         )
         user = (
             f"Company profile:\n{company.model_dump_json(indent=2)}\n\n"
             f"Fund mandate:\n{json.dumps(fund, default=str, indent=2)}"
         )
-        return self._complete_schema(system=system, user=user, schema=ThesisJudgment)
+        return self._complete_schema(system=system, user=user, schema=FitJudgment)
 
     def rerank(self, *, company: CompanyProfile, candidates: list[dict]) -> RerankResult:
         system = (

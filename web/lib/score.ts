@@ -2,15 +2,15 @@
 // Lets the dashboard re-weight and re-sort instantly without re-running the LLM.
 
 export interface Weights {
-  thesis: number;
-  numeric: number;
+  mandate: number;
   strategy: number;
+  value_creation: number;
 }
 
 export interface DimensionScores {
-  thesis: number | null;
-  numeric: number | null;
+  mandate: number | null;
   strategy: number | null;
+  value_creation: number | null;
 }
 
 export function compose(
@@ -18,9 +18,9 @@ export function compose(
   weights: Weights,
 ): { composite: number | null; effective: Partial<Weights> } {
   const dims: [keyof Weights, number | null][] = [
-    ["thesis", scores.thesis],
-    ["numeric", scores.numeric],
+    ["mandate", scores.mandate],
     ["strategy", scores.strategy],
+    ["value_creation", scores.value_creation],
   ];
   const present = dims.filter(
     ([k, v]) => v !== null && weights[k] > 0,
