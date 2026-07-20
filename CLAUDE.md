@@ -18,7 +18,9 @@ Backend (Python / uv):
 ```
 uv run pytest                              # DB- and network-free test suite
 uv run alembic upgrade head                # apply migrations (needs Postgres up)
-uv run seed                                # load the curated fund seed
+uv run seed                                # load the curated fund seed (16 funds)
+uv run ingest-edgar                        # ingest real funds from SEC EDGAR bulk data
+uv run backfill-embeddings                 # populate pgvector fund embeddings (needs OPENAI_API_KEY)
 uv run uvicorn app.main:app --reload       # run the API (docs at /docs)
 ```
 
@@ -37,7 +39,7 @@ Tests are intentionally DB- and network-free (LLM faked, HTTP mocked with `respx
 
 ## Project status
 
-M0–M5 of `BUILD_PLAN.md` are built and verified: FastAPI + async SQLAlchemy/Postgres backend (tiered scraper with a Claude `web_fetch` Tier-2 fallback, LLM extractor, 4-stage matching engine), a Next.js dashboard (`web/`), and a Docker Compose stack. "Later" items (SEC EDGAR ingestion, embeddings/pgvector, background jobs, auth) are not built. Read `BUILD_PLAN.md` before feature work.
+M0–M5 of `BUILD_PLAN.md` are built and verified: FastAPI + async SQLAlchemy/Postgres backend (tiered scraper with a Claude `web_fetch` Tier-2 fallback, LLM extractor, 4-stage matching engine), a Next.js dashboard (`web/`), and a Docker Compose stack. **SEC EDGAR fund ingestion** (`ingest-edgar`, from Form ADV / Form D bulk data) and a **pgvector semantic pre-filter** (`backfill-embeddings`, OpenAI embeddings) are also built. Remaining "Later" items (auth, and background jobs beyond the enrichment job) are not built. Read `BUILD_PLAN.md` before feature work.
 
 Tier-2 fallback runs entirely through Claude's server-side `web_fetch` tool (uses `ANTHROPIC_API_KEY`; no extra deps or browser). `SCRAPE_TIER2=claude|off` selects the fallback.
 
@@ -51,7 +53,7 @@ The pipeline is **scrape → extract → store → match → rank**, each a sepa
 
 1. **Scrape** (`services/scraper/`) — tiered: Tier-1 HTTP fetch + BeautifulSoup parse by default; a `detector` decides whether to escalate to Tier-2 (Claude's server-side `web_fetch` tool in `tier2_claude.py`, selected by `SCRAPE_TIER2`).
 2. **Extract** (`services/extractor.py` + `services/llm/`) — provider-agnostic `LLMClient` (Anthropic default, OpenAI alt) coerces scraped text into the `CompanyProfile` schema. Numerics are optional; **missing is never treated as zero**. An optional **enrich** step (`services/enrichment.py`, `ENRICH_SOURCE=claude|off`) then uses Claude's server-side `web_search` tool to fill gaps the website leaves open — headcount, revenue, ownership, investors, competitors — merging into empty fields only (website stays authoritative) and citing each source with `fetch_method=search`. Enrichment runs as a **background job** (`run_company_enrichment`, scheduled via FastAPI `BackgroundTasks`): `POST /companies` returns right after extraction with `enrichment_status=pending`, the job updates the row on its own session, and the client polls until `enrichment_status` leaves `pending`/`running`.
-3. **Match** (`services/matching/`) — 4 stages: hard filters (geo/sector, forgiving on unknowns) → soft numeric range scoring → LLM thesis/strategy judge → LLM re-rank + rationale on the top N. Composite score uses configurable weights (`settings`) and **renormalises over present dimensions** so missing financials don't penalise.
+3. **Match** (`services/matching/`) — 4 stages: hard filters (geo/sector, forgiving on unknowns) → soft numeric range scoring → LLM thesis/strategy judge → LLM re-rank + rationale on the top N. An optional **pgvector semantic pre-filter** (`embeddings.py`, `backfill-embeddings`) adds a cosine-similarity dimension when a fund has a stored `thesis_embedding` and a company embedding is supplied (OpenAI embeddings, regardless of `llm_provider`). Composite score uses configurable weights (`settings`) and **renormalises over present dimensions** so missing financials (or absent embeddings) don't penalise.
 
 `services/pipeline.py` ties these to the DB and is what the routers call. Models in `app/models/`, schemas in `app/schemas/`, routers in `app/routers/`, fund seed in `app/seed/`.
 

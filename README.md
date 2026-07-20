@@ -111,7 +111,11 @@ migrations and seeds the curated fund list:
 | --- | --- | --- |
 | `web` | http://localhost:3000 | Next.js dashboard |
 | `api` | http://localhost:8000 | FastAPI backend (interactive docs at http://localhost:8000/docs) |
-| `db`  | localhost:5432 | Postgres 16 (data persisted in the `pgdata` volume) |
+| `db`  | localhost:5432 | Postgres 16 + pgvector (data persisted in the `pgdata` volume) |
+
+The seed loads 16 curated funds — enough to demo immediately. To pull the full
+SEC EDGAR fund universe and turn on the semantic pre-filter, see
+[Loading fund data](#loading-fund-data).
 
 **5. Use it**
 
@@ -132,8 +136,11 @@ All configuration lives in `.env` (copied from `.env.example`). Key settings:
 | `LLM_PROVIDER` | yes | `anthropic` | `anthropic` or `openai` |
 | `ANTHROPIC_API_KEY` | if provider = anthropic | — | from https://console.anthropic.com |
 | `ANTHROPIC_MODEL` | no | `claude-sonnet-5` | |
-| `OPENAI_API_KEY` | if provider = openai | — | from https://platform.openai.com |
+| `OPENAI_API_KEY` | for OpenAI provider **or embeddings** | — | Also required for the pgvector semantic pre-filter — embeddings always use OpenAI, even under `LLM_PROVIDER=anthropic`. From https://platform.openai.com |
 | `OPENAI_MODEL` | no | `gpt-4o` | |
+| `OPENAI_EMBEDDING_MODEL` | no | `text-embedding-3-small` | Model for the semantic pre-filter |
+| `EDGAR_USER_AGENT` | no | includes a contact | SEC requires a contact string in the request header; override with your own |
+| `EDGAR_INGEST_LIMIT` | no | `100` | Default cap on funds added per `ingest-edgar` run |
 | `SCRAPE_TIER2` | no | `claude` | `claude` or `off` — JS-heavy / bot-protected-site fallback |
 | `ENRICH_SOURCE` | no | `claude` | `claude` or `off` — web-search enrichment (headcount, revenue, ownership, investors) |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | no | `descovery` / `descovery` / `descovery_point` | |
@@ -146,6 +153,62 @@ which is enough for most sites. When a page comes back thin or blocked
 which fetches the page via Claude's server-side `web_fetch` tool using the
 `ANTHROPIC_API_KEY` you already set — no extra key or browser to install. Set
 `SCRAPE_TIER2=off` to disable the fallback.
+
+---
+
+## Loading fund data
+
+The matcher ranks whatever funds are in the database. There are three ways to
+populate it, from quickest to most complete. (In Docker, run these with
+`docker compose exec api <command>`; locally, with `uv run <command>`.)
+
+**1. Curated seed — automatic.** `docker compose up` seeds 16 hand-picked PE
+funds from `app/seed/funds_seed.json` on first run — enough to demo the pipeline
+immediately. It's idempotent (funds already present by name are skipped), so
+it's safe to re-run:
+
+```bash
+docker compose exec api seed      # Docker
+uv run seed                       # local
+```
+
+**2. SEC EDGAR ingestion — the real universe.** Pull real funds from SEC bulk
+data (Form ADV / Form D): it downloads the filings, discovers Private-Equity-Fund
+candidates, infers an investment mandate for each, and inserts them as funds.
+
+```bash
+uv run ingest-edgar                                    # both sources, capped at EDGAR_INGEST_LIMIT (100)
+uv run ingest-edgar --source form_d --quarter 2026q2 --limit 20
+uv run ingest-edgar --bulk-register                    # register the whole candidate pool with regulatory data but no mandate (fast)
+uv run ingest-edgar --backfill-metadata                # fill regulatory fields on funds already loaded
+```
+
+SEC requires a contact string in the request User-Agent — a default is provided;
+override it with `EDGAR_USER_AGENT`. Downloaded bulk data is cached under
+`data/edgar`; add `--skip-download` to reuse it.
+
+**3. Semantic embeddings — optional, improves ranking.** The matcher includes a
+pgvector semantic pre-filter. After loading funds (seed or EDGAR), compute and
+store each fund's mandate embedding:
+
+```bash
+docker compose exec api backfill-embeddings   # Docker
+uv run backfill-embeddings                    # local
+```
+
+It only fills funds that don't have an embedding yet, so it's cheap and safe to
+re-run. **It requires `OPENAI_API_KEY`** — embeddings always use OpenAI because
+Anthropic has no embeddings API, even when `LLM_PROVIDER=anthropic` for
+everything else. Without embeddings the matcher still works; it just skips the
+semantic dimension (which is never scored as zero).
+
+### The vector database
+
+The `db` service is **pgvector** (`pgvector/pgvector:pg16`), not plain Postgres.
+The `vector` extension and the `funds.thesis_embedding` column are created
+automatically by the Alembic migrations that run on startup (migration `0011`) —
+there's nothing to install or enable by hand. The column stays empty until you
+run `backfill-embeddings` (step 3 above).
 
 ---
 
@@ -187,8 +250,10 @@ uv run pytest
 ## Project layout
 
 - `app/` — FastAPI backend: `services/` (scrape/extract/match pipeline), `models/`, `schemas/`, `routers/`, `seed/`
+  - `app/services/edgar/` — SEC EDGAR fund ingestion (`ingest-edgar`)
+  - `app/services/matching/embeddings.py` — pgvector semantic pre-filter (`backfill-embeddings`)
 - `web/` — Next.js dashboard
-- `alembic/` — database migrations
+- `alembic/` — database migrations (`0011` provisions the pgvector extension + column)
 - `docker/entrypoint.sh` — waits for Postgres, migrates, seeds, then serves the API
 - `BUILD_PLAN.md` — milestone plan and status; read before feature work
 - `CLAUDE.md` — guidance for working in this repo
