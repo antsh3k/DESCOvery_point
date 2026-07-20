@@ -6,6 +6,8 @@ import { Badge } from "@/components/Badge";
 import { api } from "@/lib/api";
 import type { Fund, FundInput } from "@/lib/types";
 
+const PAGE_SIZE = 100;
+
 function range(min: number | null, max: number | null): string {
   if (min === null && max === null) return "—";
   return `$${min ?? "?"}–${max ?? "?"}m`;
@@ -17,6 +19,7 @@ export default function FundsPage() {
   const [mode, setMode] = useState<"url" | "manual">("url");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     api
@@ -28,7 +31,13 @@ export default function FundsPage() {
 
   function prepend(fund: Fund) {
     setFunds((prev) => [fund, ...prev.filter((f) => f.id !== fund.id)]);
+    setPage(0);
   }
+
+  const pageCount = Math.max(1, Math.ceil(funds.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const start = currentPage * PAGE_SIZE;
+  const visible = funds.slice(start, start + PAGE_SIZE);
 
   return (
     <div className="space-y-6">
@@ -83,7 +92,7 @@ export default function FundsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {funds.map((f) => (
+              {visible.map((f) => (
                 <tr key={f.id}>
                   <td className="px-4 py-2">
                     <div className="font-medium">{f.name}</div>
@@ -124,6 +133,32 @@ export default function FundsPage() {
               ))}
             </tbody>
           </table>
+          <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
+            <span>
+              {funds.length === 0
+                ? "No funds"
+                : `Showing ${start + 1}–${start + visible.length} of ${funds.length}`}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+                className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-40"
+              >
+                ← Prev
+              </button>
+              <span className="tabular-nums">
+                Page {currentPage + 1} of {pageCount}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                disabled={currentPage >= pageCount - 1}
+                className="rounded-md border border-slate-300 px-3 py-1 disabled:opacity-40"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
