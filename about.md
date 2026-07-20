@@ -116,12 +116,12 @@ accordingly.
 
 The funds page shows the assembled universe — the seed dataset plus any funds you
 add by URL, alongside the EDGAR-ingested funds, each badged with its mandate
-source. Searching it for **Goldman Sachs** surfaces dozens of its `ai_inferred`
+source. Searching it for **Blackstone** surfaces dozens of its `ai_inferred`
 EDGAR vehicles — the kind of breadth the shortlist is drawn from.
 
-![Fund universe — searching for Goldman Sachs surfaces its EDGAR-sourced funds, each flagged ai_inferred](docs/screenshots/funds_explorer.png)
+![Fund universe — searching for Blackstone surfaces its EDGAR-sourced funds, each flagged ai_inferred](docs/screenshots/funds_explorer.png)
 
-*The fund universe, filtered to Goldman Sachs: EDGAR-sourced vehicles each flagged `ai_inferred`, with the "Add by URL / Add manually" flow up top.*
+*The fund universe, filtered to Blackstone: EDGAR-sourced vehicles each flagged `ai_inferred`, with the "Add by URL / Add manually" flow up top.*
 
 ---
 
@@ -185,7 +185,7 @@ so the user makes the final call.
 ### Formation Bio's shortlist
 
 Running the engine puts **J.P. Morgan's 270 Growth Fund** at the top (fit 57),
-ahead of two Goldman Sachs growth/opportunistic vehicles — a result that shows
+ahead of two Blackstone growth/opportunistic vehicles — a result that shows
 the pillars working together:
 
 - **The geography and gross-size gates** clear the obvious non-fits; survivors are
