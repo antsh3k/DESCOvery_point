@@ -20,6 +20,7 @@ export default function FundsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     api
@@ -34,10 +35,20 @@ export default function FundsPage() {
     setPage(0);
   }
 
-  const pageCount = Math.max(1, Math.ceil(funds.length / PAGE_SIZE));
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? funds.filter((f) =>
+        [f.name, f.firm ?? "", ...f.sectors, ...f.geographies]
+          .join(" ")
+          .toLowerCase()
+          .includes(q),
+      )
+    : funds;
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
   const start = currentPage * PAGE_SIZE;
-  const visible = funds.slice(start, start + PAGE_SIZE);
+  const visible = filtered.slice(start, start + PAGE_SIZE);
 
   return (
     <div className="space-y-6">
@@ -81,6 +92,17 @@ export default function FundsPage() {
         <p className="text-slate-500">Loading funds…</p>
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 p-3">
+            <input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Search funds by name, firm, sector, or geography…"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-accent focus:outline-none"
+            />
+          </div>
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
               <tr>
@@ -131,13 +153,22 @@ export default function FundsPage() {
                   </td>
                 </tr>
               ))}
+              {visible.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                    {q ? `No funds match “${query.trim()}”` : "No funds"}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
           <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
             <span>
-              {funds.length === 0
-                ? "No funds"
-                : `Showing ${start + 1}–${start + visible.length} of ${funds.length}`}
+              {filtered.length === 0
+                ? q
+                  ? "No matches"
+                  : "No funds"
+                : `Showing ${start + 1}–${start + visible.length} of ${filtered.length}${q ? ` (filtered from ${funds.length})` : ""}`}
             </span>
             <div className="flex items-center gap-2">
               <button
