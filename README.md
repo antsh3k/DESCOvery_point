@@ -22,7 +22,7 @@ docker compose up --build    # first run auto-migrates the DB and seeds the fund
 
 # Optional but recommended — load the bundled full dataset (55k+ funds + demo
 # analyses) once the API is serving on :8000, in a second terminal:
-docker compose exec -T db psql -U descovery -d descovery_point < db/descovery_seed.sql
+gunzip -c db/descovery_seed.sql.gz | docker compose exec -T db psql -U descovery -d descovery_point
 ```
 
 Then open:
@@ -143,13 +143,13 @@ The seed loads 16 curated funds — enough to demo immediately.
 
 **5. Load the full dataset (recommended)**
 
-This zip bundles a full database snapshot at `db/descovery_seed.sql` — **55k+
+This zip bundles a full database snapshot at `db/descovery_seed.sql.gz` — **55k+
 real funds** (2,220 with semantic embeddings) plus a few pre-analyzed demo
 companies and their match results. Once the API is serving on :8000, load it in a
 second terminal:
 
 ```bash
-docker compose exec -T db psql -U descovery -d descovery_point < db/descovery_seed.sql
+gunzip -c db/descovery_seed.sql.gz | docker compose exec -T db psql -U descovery -d descovery_point
 ```
 
 It replaces the 16-fund starter seed with the complete set in one transaction, so
@@ -204,7 +204,7 @@ to populate it from scratch, from quickest to most complete. (In Docker, run
 these with `docker compose exec api <command>`; locally, with `uv run <command>`.)
 
 **0. Bundled snapshot — the whole universe, instantly.** This zip ships a full
-database dump at `db/descovery_seed.sql` — **55k+ real funds** (2,220 with
+database dump at `db/descovery_seed.sql.gz` — **55k+ real funds** (2,220 with
 semantic embeddings) plus a few pre-analyzed demo companies and their match
 results, so you get the complete dataset without running EDGAR ingestion or
 paying for embeddings. Load it **after** the stack is up (the schema must exist
@@ -212,7 +212,7 @@ first):
 
 ```bash
 docker compose up --build            # wait until the API is serving on :8000
-docker compose exec -T db psql -U descovery -d descovery_point < db/descovery_seed.sql
+gunzip -c db/descovery_seed.sql.gz | docker compose exec -T db psql -U descovery -d descovery_point
 ```
 
 The dump wipes the 16-fund auto-seed and replaces it with the full set (it runs
@@ -311,7 +311,7 @@ uv run pytest
   - `app/services/matching/embeddings.py` — pgvector semantic pre-filter (`backfill-embeddings`)
 - `web/` — Next.js dashboard
 - `alembic/` — database migrations (`0011` provisions the pgvector extension + column)
-- `db/descovery_seed.sql` — bundled full database snapshot (see [Loading fund data](#loading-fund-data), option 0)
+- `db/descovery_seed.sql.gz` — bundled full database snapshot (see [Loading fund data](#loading-fund-data), option 0)
 - `docker/entrypoint.sh` — waits for Postgres, migrates, seeds, then serves the API
 - `about.md` — full design walkthrough (Company → Fund → Matching) with a worked example; `tldr_about.md` is the one-paragraph version
 - `BUILD_PLAN.md` — milestone plan and status; read before feature work
