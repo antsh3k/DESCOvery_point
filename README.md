@@ -1,5 +1,26 @@
 # DESCOvery_point
 
+## Quickstart (Docker)
+
+Full stack — dashboard, API, and Postgres — in two commands. All you need is
+[Docker](https://docs.docker.com/get-docker/) and an LLM API key.
+
+```bash
+cp .env.example .env         # then paste your ANTHROPIC_API_KEY into .env
+docker compose up --build    # first run auto-migrates the DB and seeds the funds
+```
+
+Then open:
+
+- **http://localhost:3000** — Next.js dashboard (paste a company URL, run a match)
+- **http://localhost:8000/docs** — FastAPI interactive docs (drive the pipeline directly)
+
+Stop with `Ctrl-C`. `docker compose down` tears it down; add `-v` to also wipe the
+database volume.
+
+> New to the project? The [detailed walkthrough](#quick-start-with-docker-recommended)
+> and [full configuration reference](#api-keys--configuration) are below.
+
 ## Brief
 
 Design a simple AI-powered tool that takes a company's website URL as input,
