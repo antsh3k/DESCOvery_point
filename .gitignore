@@ -219,3 +219,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# EDGAR bulk data cache (large third-party downloads, re-fetchable via the script)
+data/edgar/
+
+BUILD_PLAN.md
