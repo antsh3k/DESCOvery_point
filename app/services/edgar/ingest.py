@@ -221,6 +221,129 @@ async def bulk_register_funds(
     return stats
 
 
+@dataclass
+class FirmEnrichStats:
+    firms_attempted: int = 0
+    firms_enriched: int = 0
+    funds_updated: int = 0
+    firms_skipped_no_website: int = 0
+    firms_skipped_scrape_or_extract_failed: int = 0
+    enriched_firm_names: list[str] = field(default_factory=list)
+
+
+async def enrich_pending_funds_by_firm(
+    firm_names: list[str], *, settings: Settings | None = None
+) -> FirmEnrichStats:
+    """Scrape + LLM-extract a mandate *once per firm* — using that firm's most
+    significant ``pending`` fund as the representative candidate — and apply
+    it to every pending fund under that firm.
+
+    This is the firm-level counterpart to ``ingest_edgar_funds``'s per-fund
+    scraping: a firm managing hundreds of fund vintages (Apollo has 594 in
+    this DB) only needs its site read once, since a GP's public site
+    describes its overall strategy, not a vintage-specific one. Caller
+    supplies which firms to process (e.g. the top N by fund count within some
+    filter like HQ city) — this function doesn't do that selection itself.
+    """
+    settings = settings or get_settings()
+    stats = FirmEnrichStats()
+    try:
+        llm = get_llm_client(settings)
+    except LLMError as exc:
+        logger.warning("No LLM configured (%s); cannot infer mandates", exc)
+        return stats
+
+    sem = asyncio.Semaphore(_CONCURRENCY)
+
+    async def _process_firm(firm: str) -> None:
+        async with sem:
+            async with SessionLocal() as session:
+                funds = (
+                    await session.execute(
+                        select(Fund)
+                        .where(Fund.firm == firm, Fund.mandate_source == MandateSource.pending)
+                        .order_by(Fund.gross_asset_value_usd.desc().nullslast())
+                    )
+                ).scalars().all()
+            if not funds:
+                return
+            stats.firms_attempted += 1
+            representative = funds[0]
+            candidate = FundCandidate(
+                name=representative.name,
+                firm=firm,
+                website_url=representative.website_url,
+                source_url=representative.source_url or "",
+                state=None,
+                country=None,
+                significance=float(representative.gross_asset_value_usd or 0),
+                origin="form_adv",
+            )
+
+            website = candidate.website_url
+            if not website:
+                website = await resolve_website(
+                    candidate, api_key=settings.anthropic_api_key, model=settings.anthropic_model
+                )
+            if not website:
+                stats.firms_skipped_no_website += 1
+                return
+
+            mandate = await infer_mandate(
+                candidate, website, llm=llm, max_pages=settings.scrape_max_pages
+            )
+            if mandate is None:
+                stats.firms_skipped_scrape_or_extract_failed += 1
+                return
+
+            try:
+                async with SessionLocal() as session:
+                    pending_funds = (
+                        await session.execute(
+                            select(Fund).where(
+                                Fund.firm == firm, Fund.mandate_source == MandateSource.pending
+                            )
+                        )
+                    ).scalars().all()
+                    for fund in pending_funds:
+                        fund.sectors = mandate.sectors
+                        fund.geographies = mandate.geographies
+                        fund.check_size_min_usd_m = mandate.check_size_min_usd_m
+                        fund.check_size_max_usd_m = mandate.check_size_max_usd_m
+                        fund.ebitda_min_usd_m = mandate.ebitda_min_usd_m
+                        fund.ebitda_max_usd_m = mandate.ebitda_max_usd_m
+                        fund.revenue_min_usd_m = mandate.revenue_min_usd_m
+                        fund.revenue_max_usd_m = mandate.revenue_max_usd_m
+                        fund.stage = mandate.stage
+                        fund.thesis = mandate.thesis
+                        fund.website_url = fund.website_url or website
+                        fund.mandate_source = MandateSource.ai_inferred
+                        fund.mandate_confidence = _EDGAR_CONFIDENCE
+                    await session.commit()
+            except Exception as exc:  # noqa: BLE001 - one bad firm must not abort the batch
+                logger.warning("Update failed for firm %r: %s", firm, exc)
+                stats.firms_skipped_scrape_or_extract_failed += 1
+                return
+
+            stats.firms_enriched += 1
+            stats.funds_updated += len(pending_funds)
+            stats.enriched_firm_names.append(firm)
+            logger.info(
+                "Enriched firm %r -> %d fund(s) (%d/%d firms)",
+                firm, len(pending_funds), stats.firms_enriched, len(firm_names),
+            )
+
+    await asyncio.gather(*(_process_firm(f) for f in firm_names))
+
+    logger.info(
+        "Firm enrichment done: attempted=%d enriched=%d funds_updated=%d "
+        "skipped_no_website=%d skipped_scrape_or_extract_failed=%d",
+        stats.firms_attempted, stats.firms_enriched, stats.funds_updated,
+        stats.firms_skipped_no_website, stats.firms_skipped_scrape_or_extract_failed,
+    )
+    return stats
+
+
 async def ingest_edgar_funds(
     *,
     form_d_quarters: list[str],

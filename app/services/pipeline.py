@@ -18,7 +18,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.config import Settings
 from app.db import SessionLocal
-from app.enums import CompanyStatus, EnrichmentStatus, FetchMethod
+from app.enums import CompanyStatus, EnrichmentStatus, FetchMethod, MandateSource
 from app.models import AppSettings, Company, CompanySource, Fund, Match
 from app.schemas.company import CompanyEnrichment, CompanyProfile, ExtractedSource
 from app.services.enrichment import enrich_company
@@ -194,7 +194,16 @@ async def _enrich_in_session(
 async def run_company_match(
     company: Company, session: AsyncSession, settings: Settings
 ) -> list[Match]:
-    funds = (await session.execute(select(Fund))).scalars().all()
+    # `pending` funds have no mandate at all (regulatory data only, from bulk
+    # EDGAR registration) — matching them would mean every one trivially
+    # passes the forgiving hard-filter and lands an LLM thesis-judge call
+    # with nothing to judge. Excluded until they've been through mandate
+    # extraction and promoted to `ai_inferred`.
+    funds = (
+        await session.execute(
+            select(Fund).where(Fund.mandate_source != MandateSource.pending)
+        )
+    ).scalars().all()
     app_settings = await get_or_create_settings(session)
     weights = weights_from_settings(app_settings)
 
