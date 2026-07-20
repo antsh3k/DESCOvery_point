@@ -26,7 +26,9 @@ class Fund(UUIDMixin, TimestampMixin, Base):
     ebitda_max_usd_m: Mapped[float | None] = mapped_column(Numeric(14, 2))
     revenue_min_usd_m: Mapped[float | None] = mapped_column(Numeric(14, 2))
     revenue_max_usd_m: Mapped[float | None] = mapped_column(Numeric(14, 2))
-    stage: Mapped[str | None] = mapped_column(String(128))
+    # Usually a short label ("buyout"), but some real fund sites describe
+    # strategy/stage in a full sentence — wide enough not to truncate those.
+    stage: Mapped[str | None] = mapped_column(String(512))
     thesis: Mapped[str | None] = mapped_column(Text)
 
     provenance: Mapped[FundProvenance] = mapped_column(

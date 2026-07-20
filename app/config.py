@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     # --- Enrichment (supplemental firmographics via web search) ---
     enrich_source: str = "claude"  # "claude" | "off"
 
+    # --- EDGAR fund ingestion (Form ADV / Form D bulk data) ---
+    # SEC requires a declared contact in the User-Agent on every request or it
+    # returns 403/429 (its "fair access" policy) — set a real contact.
+    edgar_user_agent: str = "DESCOvery Point antsh3k@gmail.com"
+    edgar_data_dir: str = "data/edgar"
+    edgar_ingest_limit: int = 100
+
 
 @lru_cache
 def get_settings() -> Settings:
