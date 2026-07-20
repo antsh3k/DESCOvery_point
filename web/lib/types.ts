@@ -72,6 +72,22 @@ export interface Fund {
   provenance: string;
   mandate_source: string;
   mandate_confidence: number | null;
+  // Regulatory metadata (Form ADV / Form D) — straight from the filing, not
+  // LLM-inferred; null for seed/manual/url_extracted funds.
+  fund_type_raw: string | null;
+  gross_asset_value_usd: number | null;
+  amount_raised_usd: number | null;
+  investor_count: number | null;
+  filing_date: string | null;
+  auditor_name: string | null;
+  prime_broker_name: string | null;
+  custodian_name: string | null;
+  regulatory_id: string | null;
+}
+
+export interface MatchProgress {
+  done: number;
+  total: number;
 }
 
 export interface Match {

@@ -151,3 +151,36 @@ async def test_llm_judge_calls_run_concurrently_not_sequentially():
 
     # A sequential for-loop could never have more than 1 in flight at once.
     assert llm.max_in_flight > 1
+
+
+async def test_on_progress_reports_zero_then_each_completion_up_to_total():
+    funds = [
+        make_fund(name=f"Fund {i}", sectors=["Software"], geographies=["UK"])
+        for i in range(3)
+    ]
+    events: list[tuple[int, int]] = []
+
+    await run_match(
+        _company(), funds, weights=DEFAULT_WEIGHTS, llm=FakeLLM(),
+        on_progress=lambda done, total: events.append((done, total)),
+    )
+
+    # An initial (0, total) so the UI has the total before any completion,
+    # then exactly one event per judged fund (concurrent completion order
+    # isn't guaranteed, so check the set of counts reached, not the sequence).
+    assert events[0] == (0, 3)
+    assert len(events) == 4  # the initial 0 + one per fund
+    assert {done for done, _ in events} == {0, 1, 2, 3}
+    assert all(total == 3 for _, total in events)
+
+
+async def test_on_progress_not_called_without_llm():
+    good = make_fund(name="Good", sectors=["Software"], geographies=["UK"])
+    events: list[tuple[int, int]] = []
+
+    await run_match(
+        _company(), [good], weights=DEFAULT_WEIGHTS, llm=None,
+        on_progress=lambda done, total: events.append((done, total)),
+    )
+
+    assert events == []

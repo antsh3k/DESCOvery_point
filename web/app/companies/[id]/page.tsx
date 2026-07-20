@@ -11,7 +11,7 @@ import { WeightControls } from "@/components/WeightControls";
 import { api } from "@/lib/api";
 import { DEFAULT_WEIGHTS } from "@/lib/pillars";
 import { compose, type Weights } from "@/lib/score";
-import type { Company, Fund, Match } from "@/lib/types";
+import type { Company, Fund, Match, MatchProgress } from "@/lib/types";
 
 export default function CompanyPage() {
   const params = useParams<{ id: string }>();
@@ -23,6 +23,7 @@ export default function CompanyPage() {
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [loading, setLoading] = useState(true);
   const [matching, setMatching] = useState(false);
+  const [matchProgress, setMatchProgress] = useState<MatchProgress | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,13 +81,15 @@ export default function CompanyPage() {
 
   async function runMatch() {
     setMatching(true);
+    setMatchProgress(null);
     setError(null);
     try {
-      setMatches(await api.matchCompany(id));
+      setMatches(await api.matchCompany(id, setMatchProgress));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Matching failed");
     } finally {
       setMatching(false);
+      setMatchProgress(null);
     }
   }
 
@@ -215,6 +218,35 @@ export default function CompanyPage() {
                   : "Run matching"}
             </button>
           </div>
+
+          {matching && (
+            <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+              {matchProgress && matchProgress.total > 0 ? (
+                <>
+                  <div className="flex items-center justify-between text-sm text-slate-600">
+                    <span>
+                      Judging fund {matchProgress.done} of {matchProgress.total}
+                    </span>
+                    <span className="tabular-nums">
+                      {Math.round((matchProgress.done / matchProgress.total) * 100)}%
+                    </span>
+                  </div>
+                  <div className="mt-2 h-1.5 w-full rounded-full bg-slate-100">
+                    <div
+                      className="h-1.5 rounded-full bg-accent transition-all"
+                      style={{
+                        width: `${(matchProgress.done / matchProgress.total) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Screening the fund universe…
+                </p>
+              )}
+            </div>
+          )}
 
           {error && (
             <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">

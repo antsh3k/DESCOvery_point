@@ -16,6 +16,24 @@ export function money(v: number | null, fallback = "—"): string {
   return v === null ? fallback : `$${v}m`;
 }
 
+/** A raw USD figure (not millions) as a compact `$1.2B` / `$430M` string. */
+export function moneyCompact(v: number | null, fallback = "—"): string {
+  if (v === null) return fallback;
+  if (v >= 1_000_000_000) return `$${(v / 1_000_000_000).toFixed(1)}B`;
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
+  return `$${v}`;
+}
+
+/** A short date like "Jan 2024", or the given fallback when missing. */
+export function shortDate(iso: string | null, fallback = "—"): string {
+  if (!iso) return fallback;
+  return new Date(iso).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+  });
+}
+
 /** Badge tone for a company analysis status. */
 export function statusTone(status: string): string {
   if (status === "extracted") return "green";

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from starlette.concurrency import run_in_threadpool
@@ -90,6 +91,7 @@ async def run_match(
     top_n: int = RERANK_TOP_N,
     llm_judge_top_k: int = LLM_JUDGE_TOP_K,
     company_embedding: list[float] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[MatchResult]:
     results: list[MatchResult] = []
     fund_by_id: dict[str, object] = {}
@@ -130,8 +132,13 @@ async def run_match(
             r.excluded = True
 
         sem = asyncio.Semaphore(_JUDGE_CONCURRENCY)
+        total = len(to_judge)
+        judged = 0
+        if on_progress:
+            on_progress(0, total)
 
         async def _judge_one(result: MatchResult) -> None:
+            nonlocal judged
             async with sem:
                 fund = fund_by_id[result.fund_id]
                 mandate_fit, strategy, value_creation, rationale, plausible = await _judge(
@@ -144,6 +151,11 @@ async def run_match(
                 result.value_creation_score = value_creation
                 result.rationale = rationale
                 result.excluded = not plausible
+            # Outside the semaphore block: a plain int increment has no `await`
+            # in between, so it's safe without a lock on asyncio's single thread.
+            judged += 1
+            if on_progress:
+                on_progress(judged, total)
 
         await asyncio.gather(*(_judge_one(r) for r in to_judge))
 

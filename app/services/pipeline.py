@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, select
@@ -193,7 +194,11 @@ async def _enrich_in_session(
 
 
 async def run_company_match(
-    company: Company, session: AsyncSession, settings: Settings
+    company: Company,
+    session: AsyncSession,
+    settings: Settings,
+    *,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[Match]:
     # `pending` funds have no mandate at all (regulatory data only, from bulk
     # EDGAR registration) — matching them would mean every one trivially
@@ -213,7 +218,12 @@ async def run_company_match(
     company_embedding = await _company_embedding(profile, settings)
 
     results = await run_match(
-        profile, list(funds), weights=weights, llm=llm, company_embedding=company_embedding
+        profile,
+        list(funds),
+        weights=weights,
+        llm=llm,
+        company_embedding=company_embedding,
+        on_progress=on_progress,
     )
 
     run_id = uuid.uuid4()
