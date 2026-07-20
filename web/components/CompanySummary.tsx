@@ -70,13 +70,11 @@ function RefreshIcon({ spinning }: { spinning?: boolean }) {
 
 export function CompanySummary({
   company,
-  analyzedWith,
   enriching,
   onRefresh,
   refreshing,
 }: {
   company: Company;
-  analyzedWith?: string | null;
   enriching?: boolean;
   onRefresh?: () => void;
   refreshing?: boolean;
@@ -134,9 +132,6 @@ export function CompanySummary({
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
               Enriching…
             </span>
-          )}
-          {analyzedWith && (
-            <Badge tone="slate">Analyzed with {analyzedWith}</Badge>
           )}
           <Badge tone={statusTone(company.status)}>{company.status}</Badge>
           {onRefresh && (
