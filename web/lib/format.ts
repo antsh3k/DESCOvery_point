@@ -12,7 +12,7 @@ export function moneyRange(
 }
 
 /** A single USD-millions figure, or the given fallback when missing. */
-export function money(v: number | null, fallback = "not disclosed"): string {
+export function money(v: number | null, fallback = "—"): string {
   return v === null ? fallback : `$${v}m`;
 }
 

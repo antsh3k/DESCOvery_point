@@ -18,8 +18,8 @@ function LinkIcon() {
 }
 
 /** Small inline citation next to a fact, linking to the page(s) it came from. */
-export function SourceCite({ sources }: { sources: CompanySource[] }) {
-  if (sources.length === 0) return null;
+export function SourceCite({ sources }: { sources?: CompanySource[] }) {
+  if (!sources || sources.length === 0) return null;
   return (
     <details className="group/cite relative inline-block align-middle">
       <summary

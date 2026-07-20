@@ -84,7 +84,7 @@ export function CompanySummary({
   const location =
     [company.location_region, company.location_country]
       .filter(Boolean)
-      .join(", ") || "unknown";
+      .join(", ") || "—";
 
   // Prefer revenue as the headline size; fall back to employees, then unknown.
   const size =
@@ -92,7 +92,7 @@ export function CompanySummary({
       ? `${money(company.revenue_estimate_usd_m)} revenue`
       : company.size_employees !== null
         ? `${company.size_employees} employees`
-        : "not disclosed";
+        : "—";
 
   // A handful of fields can be backfilled by web-search enrichment (see
   // merge_enrichment on the backend, which namespaces those confidences as
@@ -104,8 +104,10 @@ export function CompanySummary({
       .filter((k) => k.startsWith("enriched."))
       .map((k) => k.slice("enriched.".length)),
   );
-  const sourcesFor = (field: string): CompanySource[] =>
-    enrichedFields.has(field) ? searchSources : siteSources;
+  // Only cite a source when the field actually has a value — an empty/"—"
+  // fact wasn't established by anything, so there's nothing to point to.
+  const sourcesFor = (field: string, hasValue: boolean): CompanySource[] | undefined =>
+    hasValue ? (enrichedFields.has(field) ? searchSources : siteSources) : undefined;
 
   return (
     <section className="space-y-6">
@@ -155,14 +157,17 @@ export function CompanySummary({
         <StatCard
           icon={<IndustryIcon />}
           label="Industry"
-          value={company.industry ?? "unknown"}
-          sources={sourcesFor("industry")}
+          value={company.industry ?? "—"}
+          sources={sourcesFor("industry", company.industry !== null)}
         />
         <StatCard
           icon={<LocationIcon />}
           label="Location"
           value={location}
-          sources={sourcesFor("location_country")}
+          sources={sourcesFor(
+            "location_country",
+            company.location_region !== null || company.location_country !== null,
+          )}
         />
         <StatCard
           icon={<SizeIcon />}
@@ -170,6 +175,7 @@ export function CompanySummary({
           value={size}
           sources={sourcesFor(
             company.revenue_estimate_usd_m !== null ? "revenue_estimate_usd_m" : "size_employees",
+            company.revenue_estimate_usd_m !== null || company.size_employees !== null,
           )}
         />
       </div>
@@ -191,35 +197,40 @@ export function CompanySummary({
           <Fact
             label="Employees"
             value={
-              company.size_employees === null
-                ? "not disclosed"
-                : String(company.size_employees)
+              company.size_employees === null ? "—" : String(company.size_employees)
             }
-            sources={sourcesFor("size_employees")}
+            sources={sourcesFor("size_employees", company.size_employees !== null)}
           />
           <Fact
             label="Revenue"
             value={money(company.revenue_estimate_usd_m)}
-            sources={sourcesFor("revenue_estimate_usd_m")}
+            sources={sourcesFor(
+              "revenue_estimate_usd_m",
+              company.revenue_estimate_usd_m !== null,
+            )}
           />
           <Fact
             label="EBITDA"
             value={money(company.ebitda_estimate_usd_m)}
-            sources={siteSources}
+            sources={company.ebitda_estimate_usd_m !== null ? siteSources : undefined}
           />
           <Fact
             label="Ownership"
-            value={company.ownership_status ?? "unknown"}
-            sources={sourcesFor("ownership_status")}
+            value={company.ownership_status ?? "—"}
+            sources={sourcesFor("ownership_status", company.ownership_status !== null)}
           />
-          <Fact label="Sub-industry" value={company.sub_industry ?? "—"} sources={siteSources} />
+          <Fact
+            label="Sub-industry"
+            value={company.sub_industry ?? "—"}
+            sources={company.sub_industry !== null ? siteSources : undefined}
+          />
         </dl>
 
         {company.investors.length > 0 && (
           <div className="mb-5">
             <div className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Investors &amp; backers
-              <SourceCite sources={sourcesFor("investors")} />
+              <SourceCite sources={sourcesFor("investors", true)} />
             </div>
             <div className="flex flex-wrap gap-1.5">
               {company.investors.map((inv) => (
@@ -235,7 +246,7 @@ export function CompanySummary({
           <div className="mb-5">
             <div className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Top competitors
-              <SourceCite sources={sourcesFor("competitors")} />
+              <SourceCite sources={sourcesFor("competitors", true)} />
             </div>
             <div className="flex flex-wrap gap-1.5">
               {company.competitors.map((c) => (
