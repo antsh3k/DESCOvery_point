@@ -177,10 +177,10 @@ export function CompanySummary({
       <div className="rounded-xl border border-slate-200 bg-white p-6">
         {company.summary && (
           <>
-            <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <div className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Company summary
               <SourceCite sources={siteSources} />
-            </p>
+            </div>
             <p className="mb-5 text-sm leading-relaxed text-slate-700">
               {company.summary}
             </p>
@@ -217,10 +217,10 @@ export function CompanySummary({
 
         {company.investors.length > 0 && (
           <div className="mb-5">
-            <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <div className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Investors &amp; backers
               <SourceCite sources={sourcesFor("investors")} />
-            </p>
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {company.investors.map((inv) => (
                 <Badge key={inv} tone="slate">
@@ -233,10 +233,10 @@ export function CompanySummary({
 
         {company.competitors.length > 0 && (
           <div className="mb-5">
-            <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <div className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Top competitors
               <SourceCite sources={sourcesFor("competitors")} />
-            </p>
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {company.competitors.map((c) => (
                 <Badge key={c} tone="amber">
@@ -249,20 +249,20 @@ export function CompanySummary({
 
         {company.business_model && (
           <div className="mb-5">
-            <p className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <div className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Business model
               <SourceCite sources={siteSources} />
-            </p>
+            </div>
             <p className="text-sm text-slate-700">{company.business_model}</p>
           </div>
         )}
 
         {company.products.length > 0 && (
           <div>
-            <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <div className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Products &amp; services
               <SourceCite sources={siteSources} />
-            </p>
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {company.products.map((p) => (
                 <Badge key={p} tone="blue">
