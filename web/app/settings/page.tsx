@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { PILLARS } from "@/lib/pillars";
 import type { Settings } from "@/lib/types";
 
 export default function SettingsPage() {
@@ -59,24 +60,26 @@ export default function SettingsPage() {
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="mb-3 text-sm font-semibold">Scoring weights</h2>
         <div className="grid grid-cols-3 gap-3">
-          {(
-            ["weight_mandate", "weight_strategy", "weight_value_creation"] as const
-          ).map((key) => (
-            <div key={key}>
-              <label className={label}>
-                {key.replace("weight_", "").replace("_", " ")}
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={1}
-                step={0.05}
-                value={settings[key]}
-                onChange={(e) => set(key, Number(e.target.value))}
-                className={input}
-              />
-            </div>
-          ))}
+          {PILLARS.map(({ key, label: pillarLabel, description }) => {
+            const field = `weight_${key}` as const;
+            return (
+              <div key={key}>
+                <label className={label}>{pillarLabel}</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={settings[field]}
+                  onChange={(e) => set(field, Number(e.target.value))}
+                  className={input}
+                />
+                <p className="mt-1 text-xs leading-snug text-slate-400">
+                  {description}
+                </p>
+              </div>
+            );
+          })}
         </div>
         <p className="mt-3 text-xs text-slate-500">
           These are the saved defaults. Weights are relative and renormalise over

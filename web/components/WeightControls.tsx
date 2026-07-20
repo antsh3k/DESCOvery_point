@@ -1,12 +1,7 @@
 "use client";
 
+import { PILLARS } from "@/lib/pillars";
 import type { Weights } from "@/lib/score";
-
-const LABELS: Record<keyof Weights, string> = {
-  mandate: "Mandate",
-  strategy: "Strategy",
-  value_creation: "Value creation",
-};
 
 export function WeightControls({
   weights,
@@ -34,10 +29,10 @@ export function WeightControls({
         )}
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
-        {(Object.keys(LABELS) as (keyof Weights)[]).map((key) => (
+        {PILLARS.map(({ key, label, description }) => (
           <label key={key} className="text-sm">
             <div className="mb-1 flex justify-between text-slate-500">
-              <span>{LABELS[key]}</span>
+              <span>{label}</span>
               <span>{Math.round(weights[key] * 100)}%</span>
             </div>
             <input
@@ -51,6 +46,9 @@ export function WeightControls({
               }
               className="w-full accent-accent"
             />
+            <p className="mt-1 text-xs leading-snug text-slate-400">
+              {description}
+            </p>
           </label>
         ))}
       </div>

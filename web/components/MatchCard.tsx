@@ -2,6 +2,7 @@ import type { Fund, Match } from "@/lib/types";
 
 import { Badge } from "./Badge";
 import { ScoreBar } from "./ScoreBar";
+import { PILLARS } from "@/lib/pillars";
 import { moneyRange } from "@/lib/format";
 
 // `hardGate` chips (geo) show a red ✗ on a mismatch because a clear miss there
@@ -89,9 +90,14 @@ export function MatchCard({
       )}
 
       <div className="my-4 grid gap-3 sm:grid-cols-3">
-        <ScoreBar label="Mandate" value={match.mandate_score} />
-        <ScoreBar label="Strategy" value={match.strategy_score} />
-        <ScoreBar label="Value creation" value={match.value_creation_score} />
+        {PILLARS.map(({ key, label, description }) => (
+          <ScoreBar
+            key={key}
+            label={label}
+            hint={description}
+            value={match[`${key}_score`]}
+          />
+        ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
