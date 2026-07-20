@@ -224,9 +224,8 @@ __marimo__/
 data/edgar/
 
 BUILD_PLAN.md
-# Full DB snapshot shipped in the zip (large, re-creatable via ingest-edgar)
+# Raw (uncompressed) DB dump is large — the committed snapshot is the .gz
 db/*.sql
-db/*.sql.gz
 
 # Word docs and archives — shared out-of-band, kept out of git
 *.docx

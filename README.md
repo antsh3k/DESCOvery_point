@@ -17,6 +17,7 @@ Full stack — dashboard, API, and Postgres — in a few commands. All you need 
 [Docker](https://docs.docker.com/get-docker/) and an LLM API key.
 
 ```bash
+git clone <repo-url> && cd DESCOvery_point
 cp .env.example .env         # then paste your ANTHROPIC_API_KEY into .env
 docker compose up --build    # first run auto-migrates the DB and seeds the funds
 
@@ -95,10 +96,10 @@ For local (non-Docker) development you also need:
 
 This is the easiest way to try the app end to end.
 
-**1. Unzip and enter the project**
+**1. Clone and enter the repo**
 
 ```bash
-unzip DESCOvery_point.zip
+git clone <repo-url>
 cd DESCOvery_point
 ```
 
@@ -143,7 +144,7 @@ The seed loads 16 curated funds — enough to demo immediately.
 
 **5. Load the full dataset (recommended)**
 
-This zip bundles a full database snapshot at `db/descovery_seed.sql.gz` — **55k+
+The repo includes a full database snapshot at `db/descovery_seed.sql.gz` — **55k+
 real funds** (2,220 with semantic embeddings) plus a few pre-analyzed demo
 companies and their match results. Once the API is serving on :8000, load it in a
 second terminal:
@@ -203,7 +204,7 @@ load the **bundled database snapshot** (option 0); otherwise there are three way
 to populate it from scratch, from quickest to most complete. (In Docker, run
 these with `docker compose exec api <command>`; locally, with `uv run <command>`.)
 
-**0. Bundled snapshot — the whole universe, instantly.** This zip ships a full
+**0. Bundled snapshot — the whole universe, instantly.** The repo ships a full
 database dump at `db/descovery_seed.sql.gz` — **55k+ real funds** (2,220 with
 semantic embeddings) plus a few pre-analyzed demo companies and their match
 results, so you get the complete dataset without running EDGAR ingestion or
