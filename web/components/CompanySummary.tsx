@@ -1,23 +1,26 @@
-import type { Company } from "@/lib/types";
+import type { Company, CompanySource } from "@/lib/types";
 
 import { Badge } from "./Badge";
-import { SourceList } from "./SourceList";
+import { SourceCite } from "./SourceCite";
 import { money, statusTone, timeAgo } from "@/lib/format";
 
 function StatCard({
   icon,
   label,
   value,
+  sources,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  sources?: CompanySource[];
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
         <span className="text-slate-400">{icon}</span>
         {label}
+        {sources && <SourceCite sources={sources} />}
       </div>
       <div className="text-sm font-medium text-ink">{value}</div>
     </div>
@@ -48,6 +51,22 @@ function SizeIcon() {
     </svg>
   );
 }
+function RefreshIcon({ spinning }: { spinning?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={spinning ? "h-4 w-4 animate-spin" : "h-4 w-4"}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5" />
+    </svg>
+  );
+}
 
 export function CompanySummary({
   company,
@@ -74,6 +93,19 @@ export function CompanySummary({
       : company.size_employees !== null
         ? `${company.size_employees} employees`
         : "not disclosed";
+
+  // A handful of fields can be backfilled by web-search enrichment (see
+  // merge_enrichment on the backend, which namespaces those confidences as
+  // "enriched.<field>"); everything else always comes from the scraped site.
+  const siteSources = company.sources.filter((s) => s.fetch_method !== "search");
+  const searchSources = company.sources.filter((s) => s.fetch_method === "search");
+  const enrichedFields = new Set(
+    Object.keys(company.extraction_confidence ?? {})
+      .filter((k) => k.startsWith("enriched."))
+      .map((k) => k.slice("enriched.".length)),
+  );
+  const sourcesFor = (field: string): CompanySource[] =>
+    enrichedFields.has(field) ? searchSources : siteSources;
 
   return (
     <section className="space-y-6">
@@ -109,25 +141,45 @@ export function CompanySummary({
             <button
               onClick={onRefresh}
               disabled={refreshing}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-ink hover:border-accent hover:text-accent disabled:opacity-50"
+              title={refreshing ? "Refreshing…" : "Refresh data"}
+              aria-label={refreshing ? "Refreshing…" : "Refresh data"}
+              className="rounded-lg border border-slate-300 bg-white p-2 text-ink hover:border-accent hover:text-accent disabled:opacity-50"
             >
-              {refreshing ? "Refreshing…" : "Refresh data"}
+              <RefreshIcon spinning={refreshing} />
             </button>
           )}
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard icon={<IndustryIcon />} label="Industry" value={company.industry ?? "unknown"} />
-        <StatCard icon={<LocationIcon />} label="Location" value={location} />
-        <StatCard icon={<SizeIcon />} label="Size" value={size} />
+        <StatCard
+          icon={<IndustryIcon />}
+          label="Industry"
+          value={company.industry ?? "unknown"}
+          sources={sourcesFor("industry")}
+        />
+        <StatCard
+          icon={<LocationIcon />}
+          label="Location"
+          value={location}
+          sources={sourcesFor("location_country")}
+        />
+        <StatCard
+          icon={<SizeIcon />}
+          label="Size"
+          value={size}
+          sources={sourcesFor(
+            company.revenue_estimate_usd_m !== null ? "revenue_estimate_usd_m" : "size_employees",
+          )}
+        />
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-6">
         {company.summary && (
           <>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Company summary
+              <SourceCite sources={siteSources} />
             </p>
             <p className="mb-5 text-sm leading-relaxed text-slate-700">
               {company.summary}
@@ -143,17 +195,31 @@ export function CompanySummary({
                 ? "not disclosed"
                 : String(company.size_employees)
             }
+            sources={sourcesFor("size_employees")}
           />
-          <Fact label="Revenue" value={money(company.revenue_estimate_usd_m)} />
-          <Fact label="EBITDA" value={money(company.ebitda_estimate_usd_m)} />
-          <Fact label="Ownership" value={company.ownership_status ?? "unknown"} />
-          <Fact label="Sub-industry" value={company.sub_industry ?? "—"} />
+          <Fact
+            label="Revenue"
+            value={money(company.revenue_estimate_usd_m)}
+            sources={sourcesFor("revenue_estimate_usd_m")}
+          />
+          <Fact
+            label="EBITDA"
+            value={money(company.ebitda_estimate_usd_m)}
+            sources={siteSources}
+          />
+          <Fact
+            label="Ownership"
+            value={company.ownership_status ?? "unknown"}
+            sources={sourcesFor("ownership_status")}
+          />
+          <Fact label="Sub-industry" value={company.sub_industry ?? "—"} sources={siteSources} />
         </dl>
 
         {company.investors.length > 0 && (
           <div className="mb-5">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Investors &amp; backers
+              <SourceCite sources={sourcesFor("investors")} />
             </p>
             <div className="flex flex-wrap gap-1.5">
               {company.investors.map((inv) => (
@@ -167,8 +233,9 @@ export function CompanySummary({
 
         {company.competitors.length > 0 && (
           <div className="mb-5">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Top competitors
+              <SourceCite sources={sourcesFor("competitors")} />
             </p>
             <div className="flex flex-wrap gap-1.5">
               {company.competitors.map((c) => (
@@ -182,8 +249,9 @@ export function CompanySummary({
 
         {company.business_model && (
           <div className="mb-5">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <p className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Business model
+              <SourceCite sources={siteSources} />
             </p>
             <p className="text-sm text-slate-700">{company.business_model}</p>
           </div>
@@ -191,8 +259,9 @@ export function CompanySummary({
 
         {company.products.length > 0 && (
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               Products &amp; services
+              <SourceCite sources={siteSources} />
             </p>
             <div className="flex flex-wrap gap-1.5">
               {company.products.map((p) => (
@@ -204,24 +273,25 @@ export function CompanySummary({
           </div>
         )}
       </div>
-
-      <details className="group rounded-xl border border-slate-200 bg-white p-4">
-        <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-ink">
-          Cited sources ({company.sources.length})
-          <span className="text-slate-400 transition group-open:rotate-180">⌄</span>
-        </summary>
-        <div className="mt-4">
-          <SourceList sources={company.sources} />
-        </div>
-      </details>
     </section>
   );
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+function Fact({
+  label,
+  value,
+  sources,
+}: {
+  label: string;
+  value: string;
+  sources?: CompanySource[];
+}) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-400">{label}</dt>
+      <dt className="flex items-center gap-1 text-xs uppercase tracking-wide text-slate-400">
+        {label}
+        {sources && <SourceCite sources={sources} />}
+      </dt>
       <dd className="text-sm text-ink">{value}</dd>
     </div>
   );
