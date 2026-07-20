@@ -1,17 +1,12 @@
-# Screenshots for `about.md`
+# Screenshots used in `about.md`
 
-Drop the images here using the exact filenames below and they'll render in
-`about.md` automatically (the doc already references these paths). All are from
-a **Formation Bio** ([formation.bio](https://formation.bio)) run already stored
-in the app — no live run needed.
+All from a **Formation Bio** ([formation.bio](https://formation.bio)) run stored
+in the app, except the fund explorer, which is filtered to **Goldman Sachs** PE
+funds ingested from SEC EDGAR.
 
-| Filename | What to capture |
+| File | Shows |
 |---|---|
-| `formation-bio-dashboard.png` | The full dashboard result for formation.bio — company summary on one side, ranked fund shortlist on the other (the "hero" shot). |
-| `formation-bio-company-profile.png` | The extracted company card: industry, New York HQ, VC-backed ownership, investors/competitors, and the **Sources** list with `http` / `search` badges. |
-| `funds-universe.png` | The funds page — seed / URL / EDGAR funds side by side, each badged with its provenance and mandate source (`authoritative` / `ai_inferred` / `pending`). |
-| `formation-bio-matches.png` | The ranked shortlist: fund cards with the per-pillar score breakdown (mandate / strategy / value_creation) and the "why this fits" rationale. |
-| `formation-bio-scoring-weights.png` | The live weight controls + a card showing how each pillar is scored (hover/breakdown). |
-
-Suggested capture size: ~1400px wide, PNG, light **or** dark theme (pick one and
-keep it consistent across shots).
+| `home_page.png` | Landing page — enter a company URL (here formation.bio) to analyze; recent analyses below. |
+| `company_profile.png` | Formation Bio's extracted company card — industry, New York HQ, size, VC-backed ownership, investors, competitors, products, with cited sources. |
+| `funds_explorer.png` | The fund universe filtered to Goldman Sachs — EDGAR-sourced funds flagged `ai_inferred`, plus the Add-by-URL / Add-manually flow. |
+| `matching.png` | Formation Bio's ranked fund shortlist — per-pillar (mandate / strategy / value_creation) scores, "why this fits" rationale, and the live weight sliders. |

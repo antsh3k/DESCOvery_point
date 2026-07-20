@@ -27,10 +27,9 @@ numbers are never fabricated, and every fact carries a cited source.
 > (growth-equity fit, *not* a control buyout). The screenshots below come from an
 > actual run already stored in the app.
 
-<!-- Replace with a screenshot saved at docs/screenshots/formation-bio-dashboard.png -->
-![Formation Bio — the dashboard: extracted company summary alongside its ranked PE-fund shortlist](docs/screenshots/formation-bio-dashboard.png)
+![DESCOvery Point landing page — a single input that turns a company URL into a PE-buyer shortlist](docs/screenshots/home_page.png)
 
-*The dashboard for formation.bio — company summary on the left, ranked fund shortlist on the right.*
+*The entry point: paste a company URL (here, formation.bio) and hit Analyze; recent analyses appear below.*
 
 ---
 
@@ -70,17 +69,18 @@ specifically to feed the match pillars below; because SMEs disclose so little,
 **missing is modelled explicitly as null, never zero or a guess.**
 
 **Formation Bio, in practice.** Its website establishes what the company *does* —
-AI-driven drug development — yielding the industry (pharmaceuticals / biotech),
-the New York HQ, products, and business model. The enrichment pass then fills
-what the site omits: that it is **VC-backed** (surfacing investors such as
-Andreessen Horowitz, Sequoia, and Sanofi from PitchBook / news) and a
-**growth-stage** `deal_stage`. Every fact is tagged with where it came from —
+AI-native, tech-driven drug development — yielding the industry (Pharmaceuticals),
+a sub-industry of *AI-driven clinical-stage drug development*, the New York HQ, its
+products (Delphi, Atlas, Forge, Apollo, ARK), and business model. The enrichment
+pass then fills what the site omits: **191 employees**, **~$39.2m revenue** (EBITDA
+left blank — *not* zero), **VC-backed** ownership with investors such as a16z,
+Sequoia, and Thrive Capital, and a **growth-stage** `deal_stage` whose note even
+captures the $372M Series D. Every fact is tagged with where it came from —
 website `http` vs enrichment `search`.
 
-<!-- Replace with a screenshot saved at docs/screenshots/formation-bio-company-profile.png -->
-![Formation Bio — extracted company profile with per-field confidence and cited sources](docs/screenshots/formation-bio-company-profile.png)
+![Formation Bio — extracted company card: industry, location, size, ownership, investors, competitors, products](docs/screenshots/company_profile.png)
 
-*Formation Bio's extracted profile: website facts plus search-enriched firmographics, each with its source.*
+*Formation Bio's extracted card — website facts plus search-enriched firmographics (investors, competitors, ownership), each linking to its source.*
 
 ---
 
@@ -114,15 +114,14 @@ a fund they spot; EDGAR gives real breadth. AI-inferred mandates are always
 distinctly flagged (`mandate_source=ai_inferred`) so the user weighs them
 accordingly.
 
-The funds page shows the assembled universe — seed, URL-added, and EDGAR funds
-side by side, each badged with its provenance and mandate source. For Formation
-Bio, this is the pool the next step narrows down to the healthcare / biotech and
-growth-oriented investors that could plausibly buy it.
+The funds page shows the assembled universe — the seed dataset plus any funds you
+add by URL, alongside the EDGAR-ingested funds, each badged with its mandate
+source. Searching it for **Goldman Sachs** surfaces dozens of its `ai_inferred`
+EDGAR vehicles — the kind of breadth the shortlist is drawn from.
 
-<!-- Replace with a screenshot saved at docs/screenshots/funds-universe.png -->
-![The fund universe — seed, URL-added, and EDGAR funds, each badged with provenance and mandate source](docs/screenshots/funds-universe.png)
+![Fund universe — searching for Goldman Sachs surfaces its EDGAR-sourced funds, each flagged ai_inferred](docs/screenshots/funds_explorer.png)
 
-*The fund universe: curated seed, user-added, and EDGAR-sourced funds, with provenance and mandate-source flags.*
+*The fund universe, filtered to Goldman Sachs: EDGAR-sourced vehicles each flagged `ai_inferred`, with the "Add by URL / Add manually" flow up top.*
 
 ---
 
@@ -185,27 +184,26 @@ so the user makes the final call.
 
 ### Formation Bio's shortlist
 
-Running the engine over the fund universe shows the pillars working together:
+Running the engine puts **J.P. Morgan's 270 Growth Fund** at the top (fit 57),
+ahead of two Goldman Sachs growth/opportunistic vehicles — a result that shows
+the pillars working together:
 
-- **Stage 1** passes US and global funds on geography; because Formation Bio is a
-  large, well-funded business, any sub-scale small-cap buyout funds fall away on
-  the gross-size gate.
-- **Strategy fit** is where the nuance shows: a VC-backed, fast-growing,
-  founder-led company is a **growth-equity** target, so healthcare/tech growth
-  investors score highly while control-buyout and turnaround funds are correctly
-  deprioritised — *even when their sector overlaps*.
-- **Value-creation fit** rewards funds that bring life-sciences operating
-  expertise and scale-up capital to a company at this stage.
+- **The geography and gross-size gates** clear the obvious non-fits; survivors are
+  ranked by the free size + semantic signals before the LLM judges the top ones.
+- **Strategy fit is where the nuance shows.** The top card's rationale is explicit
+  — a *growth-stage* mandate matches Formation Bio's *"late-venture/growth-stage
+  status, $372M Series D … and need for flexible growth capital rather than a
+  traditional buyout structure."* A VC-backed, fast-growing company is correctly
+  read as a **growth-equity** target, not a control buyout.
+- **Value-creation fit** rewards funds that can bring growth capital and sector
+  support to a company at this stage.
 
-Each card carries a plain-language **"why this fits,"** and the weights can be
-re-tuned live to see the ranking respond.
+The top matches here are **EDGAR-sourced** funds (`ai_inferred` mandates), so the
+fit scores sit in the ~50s: sector and geo are unconfirmed on those mandates, and
+the composite renormalises around what *is* known rather than inventing precision.
+Each card carries a plain-language **"why this fits,"** and the weight sliders at
+the top re-sort the shortlist live.
 
-<!-- Replace with a screenshot saved at docs/screenshots/formation-bio-matches.png -->
-![Formation Bio — ranked fund shortlist with per-pillar score breakdown and 'why this fits' rationale](docs/screenshots/formation-bio-matches.png)
+![Formation Bio — ranked fund shortlist with per-pillar breakdown, 'why this fits', and the live weight sliders](docs/screenshots/matching.png)
 
-*Formation Bio's ranked shortlist — each fund with its mandate / strategy / value_creation breakdown and rationale.*
-
-<!-- Replace with a screenshot saved at docs/screenshots/formation-bio-scoring-weights.png -->
-![The live weight controls and per-pillar scoring breakdown](docs/screenshots/formation-bio-scoring-weights.png)
-
-*Live weight controls — re-weighting the three pillars re-sorts the shortlist without re-running the LLM.*
+*Formation Bio's ranked shortlist: mandate / strategy / value_creation per fund, each with a rationale, under the live weight controls.*
