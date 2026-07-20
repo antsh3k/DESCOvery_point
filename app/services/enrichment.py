@@ -42,7 +42,11 @@ _SEARCH_SYSTEM = (
     "- ownership status (founder-owned, PE-owned, VC-backed, public, subsidiary)\n"
     "- investors, backers, parent company, or acquirers\n"
     "- the top competitors (name the closest 5, most direct first; sources like "
-    "Datanyze, Owler, Craft, or industry write-ups list these)\n\n"
+    "Datanyze, Owler, Craft, or industry write-ups list these)\n"
+    "- growth trend: any stated revenue/earnings growth rate, or news of rapid "
+    "growth, a slowdown, or decline\n"
+    "- signals of a PE deal situation: recent funding/expansion news, a sale "
+    "process, distress/restructuring, or a founder retiring/succession\n\n"
     "Report what you find in a few short lines, citing the source URL for each "
     "fact. If the searches don't establish a fact, say so — never guess."
 )
@@ -52,8 +56,14 @@ _COERCE_SYSTEM = (
     "if the notes give another currency). ownership_status is one short label: "
     "'founder-owned', 'PE-owned', 'VC-backed', 'public', 'subsidiary', or "
     "'unknown'. `competitors` is at most 5 competitor company names, most direct "
-    "first. Leave any unsupported field null / empty. In `sources`, list only "
-    "URLs that appear in the notes. Add a 0-1 `confidence` per populated field."
+    "first. `growth_trajectory` is the stated growth figure if given, otherwise a "
+    "short qualitative trend ('flat', 'declining'); null if the notes say nothing "
+    "about growth. `deal_stage` is a short label for the company's likely PE deal "
+    "situation (e.g. 'growth-stage', 'mature/cash-generative buyout candidate', "
+    "'distressed/turnaround', 'founder-led succession', 'roll-up/buy-and-build "
+    "platform') based only on what the notes support; null if there's no signal. "
+    "Leave any unsupported field null / empty. In `sources`, list only URLs that "
+    "appear in the notes. Add a 0-1 `confidence` per populated field."
 )
 
 

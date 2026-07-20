@@ -243,6 +243,8 @@ def company_to_profile(company: Company) -> CompanyProfile:
         ownership_status=company.ownership_status,
         investors=list(company.investors or []),
         competitors=list(company.competitors or []),
+        growth_trajectory=company.growth_trajectory,
+        deal_stage=company.deal_stage,
         confidence=company.extraction_confidence or {},
     )
 
@@ -282,6 +284,8 @@ def _enrichment_summary(enrichment: CompanyEnrichment) -> str | None:
         bits.append(f"~${enrichment.revenue_estimate_usd_m:g}M revenue")
     if enrichment.size_employees is not None:
         bits.append(f"{enrichment.size_employees} employees")
+    if enrichment.growth_trajectory:
+        bits.append(enrichment.growth_trajectory)
     return ", ".join(bits) or None
 
 
@@ -302,6 +306,10 @@ def merge_enrichment(
         merged.investors = list(enrichment.investors)
     if not merged.competitors and enrichment.competitors:
         merged.competitors = list(enrichment.competitors[:_MAX_COMPETITORS])
+    if not merged.growth_trajectory and enrichment.growth_trajectory:
+        merged.growth_trajectory = enrichment.growth_trajectory
+    if not merged.deal_stage and enrichment.deal_stage:
+        merged.deal_stage = enrichment.deal_stage
 
     # Namespace enrichment confidences so they don't clobber extraction's.
     for key, value in (enrichment.confidence or {}).items():
@@ -330,6 +338,8 @@ def _apply_enrichment_fields(company: Company, merged: CompanyProfile) -> None:
     company.ownership_status = merged.ownership_status
     company.investors = merged.investors
     company.competitors = merged.competitors
+    company.growth_trajectory = merged.growth_trajectory
+    company.deal_stage = merged.deal_stage
     company.extraction_confidence = merged.confidence
 
 
@@ -348,6 +358,8 @@ def _apply_profile(company: Company, profile: CompanyProfile) -> None:
     company.ownership_status = profile.ownership_status
     company.investors = profile.investors
     company.competitors = profile.competitors
+    company.growth_trajectory = profile.growth_trajectory
+    company.deal_stage = profile.deal_stage
     company.raw_extracted = profile.model_dump(mode="json")
     company.extraction_confidence = profile.confidence
 

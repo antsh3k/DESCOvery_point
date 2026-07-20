@@ -31,6 +31,8 @@ export interface Company {
   ownership_status: string | null;
   investors: string[];
   competitors: string[];
+  growth_trajectory: string | null;
+  deal_stage: string | null;
   extraction_confidence: Record<string, number> | null;
   status: string;
   enrichment_status: string;

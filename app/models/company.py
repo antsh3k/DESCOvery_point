@@ -36,6 +36,10 @@ class Company(UUIDMixin, TimestampMixin, Base):
     ownership_status: Mapped[str | None] = mapped_column(String(128))
     investors: Mapped[list] = mapped_column(JSONB, default=list)
     competitors: Mapped[list] = mapped_column(JSONB, default=list)
+    # Free-text like summary/business_model — the model doesn't reliably keep
+    # these to a short label, so an unbounded column avoids truncation errors.
+    growth_trajectory: Mapped[str | None] = mapped_column(Text)
+    deal_stage: Mapped[str | None] = mapped_column(Text)
 
     raw_extracted: Mapped[dict | None] = mapped_column(JSONB)
     extraction_confidence: Mapped[dict | None] = mapped_column(JSONB)

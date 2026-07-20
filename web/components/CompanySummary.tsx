@@ -211,7 +211,13 @@ export function CompanySummary({
           />
           <Fact
             label="EBITDA"
-            value={money(company.ebitda_estimate_usd_m)}
+            value={
+              company.ebitda_estimate_usd_m !== null && company.revenue_estimate_usd_m
+                ? `${money(company.ebitda_estimate_usd_m)} (${Math.round(
+                    (company.ebitda_estimate_usd_m / company.revenue_estimate_usd_m) * 100,
+                  )}% margin)`
+                : money(company.ebitda_estimate_usd_m)
+            }
             sources={company.ebitda_estimate_usd_m !== null ? siteSources : undefined}
           />
           <Fact
@@ -223,6 +229,16 @@ export function CompanySummary({
             label="Sub-industry"
             value={company.sub_industry ?? "—"}
             sources={company.sub_industry !== null ? siteSources : undefined}
+          />
+          <Fact
+            label="Growth"
+            value={company.growth_trajectory ?? "—"}
+            sources={sourcesFor("growth_trajectory", company.growth_trajectory !== null)}
+          />
+          <Fact
+            label="Deal stage"
+            value={company.deal_stage ?? "—"}
+            sources={sourcesFor("deal_stage", company.deal_stage !== null)}
           />
         </dl>
 

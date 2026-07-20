@@ -53,6 +53,25 @@ class CompanyProfile(BaseModel):
             "company's own website; enriched via search."
         ),
     )
+    growth_trajectory: str | None = Field(
+        default=None,
+        description=(
+            "Revenue/earnings growth trend, in one short phrase (under 15 words) — "
+            "state the actual figure if given (e.g. '~20% YoY revenue growth') or a "
+            "qualitative trend ('flat', 'declining') if only that is stated. Null "
+            "when the text gives no indication either way — never guess."
+        ),
+    )
+    deal_stage: str | None = Field(
+        default=None,
+        description=(
+            "The company's likely PE deal situation, as one short label (under 8 "
+            "words) — e.g. 'growth-stage', 'mature/cash-generative buyout "
+            "candidate', 'distressed/turnaround', 'founder-led succession', "
+            "'roll-up/buy-and-build platform'. Inferred from its financial profile, "
+            "ownership, and growth trend. Null when there isn't enough signal."
+        ),
+    )
     confidence: dict[str, float] = Field(
         default_factory=dict, description="Per-field confidence in [0, 1]."
     )
@@ -68,6 +87,8 @@ class CompanyEnrichment(BaseModel):
     ownership_status: str | None = None
     investors: list[str] = Field(default_factory=list)
     competitors: list[str] = Field(default_factory=list)
+    growth_trajectory: str | None = None
+    deal_stage: str | None = None
     confidence: dict[str, float] = Field(default_factory=dict)
     sources: list[ExtractedSource] = Field(default_factory=list)
 
@@ -105,6 +126,8 @@ class CompanyRead(BaseModel):
     ownership_status: str | None
     investors: list
     competitors: list
+    growth_trajectory: str | None
+    deal_stage: str | None
     extraction_confidence: dict | None
     status: CompanyStatus
     enrichment_status: EnrichmentStatus
